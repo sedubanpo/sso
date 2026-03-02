@@ -63,7 +63,7 @@
     }
 
     .wrap {
-      width: min(960px, 92vw);
+      width: min(760px, 92vw);
       margin: 28px auto 34px;
     }
 
@@ -80,7 +80,8 @@
     .top {
       display: flex;
       align-items: center;
-      gap: 14px;
+      justify-content: space-between;
+      gap: 16px;
       padding: 16px 18px;
     }
 
@@ -91,15 +92,24 @@
       min-width: 0;
     }
 
-    .brand img {
-      width: 46px;
-      height: 46px;
-      border-radius: 12px;
-      background: #fff;
-      padding: 5px;
+    .logo-cut {
+      width: 54px;
+      height: 54px;
+      border-radius: 16px;
+      overflow: hidden;
+      position: relative;
+      background: linear-gradient(145deg, rgba(238, 247, 255, 0.9), rgba(222, 236, 255, 0.86));
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 8px 16px rgba(30, 47, 74, 0.08);
+    }
+
+    .logo-cut img {
+      position: absolute;
+      width: 88px;
+      height: 88px;
+      left: -13px;
+      top: -17px;
       object-fit: contain;
-      box-shadow: 0 8px 16px rgba(30, 47, 74, 0.12);
-      border: 1px solid rgba(95, 124, 160, 0.22);
+      filter: saturate(1.18) contrast(1.06);
     }
 
     .brand h1 {
@@ -111,6 +121,25 @@
       margin: 3px 0 0;
       color: var(--ink-soft);
       font-size: 0.86rem;
+    }
+
+    .clock {
+      text-align: right;
+      color: #4f6074;
+      min-width: 130px;
+    }
+
+    .clock strong {
+      display: block;
+      font: 700 0.86rem/1.2 "Sora", sans-serif;
+      color: #24384f;
+    }
+
+    .clock span {
+      display: block;
+      margin-top: 4px;
+      font-size: 0.78rem;
+      letter-spacing: 0.01em;
     }
 
     .board {
@@ -126,7 +155,7 @@
         linear-gradient(130deg, #f9fcff, #eef4fb 45%, #f7fbff);
       padding: 15px 18px;
       margin: 0 auto 12px;
-      max-width: 860px;
+      max-width: 620px;
     }
 
     .intro h2 {
@@ -145,14 +174,15 @@
       display: grid;
       grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
-      max-width: 860px;
+      max-width: 620px;
       margin: 0 auto;
+      grid-template-columns: 1fr;
     }
 
     .hub-card {
       position: relative;
       overflow: hidden;
-      min-height: 168px;
+      min-height: 152px;
       padding: 16px;
       border-radius: 24px;
       border: 1px solid rgba(255, 255, 255, 0.35);
@@ -254,7 +284,7 @@
     }
 
     .live {
-      grid-column: span 2;
+      grid-column: span 1;
       background:
         radial-gradient(circle at 22% 80%, rgba(29, 105, 180, 0.34), transparent 40%),
         linear-gradient(128deg, #2fb6dd, #43d0bc 50%, #8be7c7);
@@ -296,8 +326,12 @@
       .live { grid-column: span 1; }
       .hub-card { border-radius: 18px; min-height: 156px; }
       .intro { padding: 13px 14px; }
-      .brand img { width: 40px; height: 40px; }
+      .logo-cut { width: 46px; height: 46px; }
+      .logo-cut img { width: 74px; height: 74px; left: -11px; top: -15px; }
       .brand h1 { font-size: 0.98rem; }
+      .clock { min-width: auto; }
+      .clock strong { font-size: 0.78rem; }
+      .clock span { font-size: 0.72rem; }
     }
   </style>
 </head>
@@ -305,11 +339,17 @@
   <div class="wrap">
     <header class="top">
       <div class="brand">
-        <img src="https://raw.githubusercontent.com/whdtjd5294/whdtjd5294.github.io/main/sedu_logo.png" alt="에스에듀 로고" />
+        <div class="logo-cut" aria-hidden="true">
+          <img src="https://raw.githubusercontent.com/whdtjd5294/whdtjd5294.github.io/main/sedu_logo.png" alt="" />
+        </div>
         <div>
           <h1>에스에듀 허브</h1>
           <p>강사 전용</p>
         </div>
+      </div>
+      <div class="clock">
+        <strong id="todayLabel">오늘</strong>
+        <span id="timeLabel">--:--</span>
       </div>
     </header>
 
@@ -345,5 +385,31 @@
 
     <footer>© S-EDU HUB</footer>
   </div>
+  <script>
+    (function () {
+      var dateEl = document.getElementById("todayLabel");
+      var timeEl = document.getElementById("timeLabel");
+
+      function renderClock() {
+        var now = new Date();
+        dateEl.textContent = new Intl.DateTimeFormat("ko-KR", {
+          timeZone: "Asia/Seoul",
+          month: "long",
+          day: "numeric",
+          weekday: "long"
+        }).format(now);
+        timeEl.textContent = new Intl.DateTimeFormat("ko-KR", {
+          timeZone: "Asia/Seoul",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+          hour12: false
+        }).format(now);
+      }
+
+      renderClock();
+      setInterval(renderClock, 1000);
+    })();
+  </script>
 </body>
 </html>
