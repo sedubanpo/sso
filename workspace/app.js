@@ -1,3 +1,4 @@
+import {createNoticeFeed} from './auth/notices.mjs';
 import {createHubAuth} from './auth/hub-auth.mjs';
 import {createConnection} from './auth/connection.mjs';
 'use strict';
@@ -28,7 +29,7 @@ function drawNavigation(){
  for(const staff of [false,true]){if(staff&&role==='teacher')continue;const group=document.createElement('section');group.className='nav-group';group.setAttribute('aria-label',staff?'실무자 운영':'수업 운영');group.innerHTML=`<h2 class="group-label">${staff?'실무자 운영':'수업 운영'}</h2>`;
  for(const app of apps.filter(a=>!!a.staff===staff&&actor?.apps.includes(a.id))){const button=document.createElement('button');button.className='nav-item';button.dataset.app=app.id;button.setAttribute('aria-label',`${app.name}, ${app.description}`);button.innerHTML=icon(app.icon)+`<span class="nav-copy"><strong>${app.name}</strong><small>${app.description}</small></span>`;button.addEventListener('click',()=>{selectApp(app.id);if(mobile.matches)closeMenu();});button.addEventListener('mouseenter',()=>showTip(button,app));button.addEventListener('mouseleave',()=>{tooltipTimer=setTimeout(hideTip,150);});button.addEventListener('focus',()=>showTip(button,app));button.addEventListener('blur',hideTip);group.append(button);} $('navigation').append(group);}
 }
-function setGate(title,message,retry=false){$('auth-gate').hidden=false;$('gate-title').textContent=title;$('gate-message').textContent=message;$('retry-connection').hidden=!retry;}
+function setGate(title,message,retry=false,loading=false){$('loading-art').hidden=!loading;$('auth-gate').classList.toggle('is-loading',loading);$('auth-gate').setAttribute('aria-busy',String(loading));$('auth-gate').hidden=false;$('gate-title').textContent=title;$('gate-message').textContent=message;$('retry-connection').hidden=!retry;}
 function renderSelected(){
  const app=apps.find(a=>a.id===selected);if(!app)return;
  const state=connectionStates.get(selected);
@@ -38,7 +39,7 @@ function renderSelected(){
    if(actor.appEntries[selected].external){setGate('새 탭에서 연결되었습니다','열린 앱 탭에서 업무를 이어가세요.');}
    else $('auth-gate').hidden=true;
  }else if(state?.state==='error')setGate('앱에 연결하지 못했습니다',state.message,true);
- else setGate(actor.appEntries[selected].external?'새 탭에서 이용하는 앱입니다':'로그인을 연결하고 있습니다…',actor.appEntries[selected].external?'상단의 새 탭 열기로 같은 계정을 연결하세요.':'계정과 앱 사용 권한을 확인하고 있습니다.');
+ else setGate(actor.appEntries[selected].external?'새 탭에서 이용하는 앱입니다':'로그인을 연결하고 있습니다…',actor.appEntries[selected].external?'상단의 새 탭 열기로 같은 계정을 연결하세요.':'계정과 앱 사용 권한을 확인하고 있습니다.',false,!actor.appEntries[selected].external);
 }
 function connectApp(id,external=false){
  const app=apps.find(a=>a.id===id),entry=actor?.appEntries[id];if(!entry||!app)return;
@@ -60,12 +61,13 @@ function selectApp(id,updateUrl=true){
  if(!actor)return;
  const app=apps.find(a=>a.id===id&&actor.apps.includes(a.id))||apps.find(a=>actor.apps.includes(a.id));
  if(!app){setGate('사용할 수 있는 앱이 없습니다','관리자에게 앱 사용 권한을 확인해 주세요.');return;}
- $('external').hidden=false;selected=app.id;clearTimeout(timer);hideTip();closeHelp(false);
+ $('external').hidden=false;selected=app.id;$('loading-icon').innerHTML=icon(app.icon);clearTimeout(timer);hideTip();closeHelp(false);
  document.querySelectorAll('.nav-item').forEach(b=>{if(b.dataset.app===selected)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
  document.querySelector('[aria-current="page"]')?.scrollIntoView({block:'nearest'});
  $('current-app').textContent=app.name;$('current-app').title=app.name+' · '+app.description;$('app-description').textContent=app.description;document.title=`${app.name} · 에스에듀 허브`;
  $('external').href=app.url;$('external-cta').href=app.url;$('reload').hidden=!!actor.appEntries[selected].external;
  if(!connections.has(selected)&&!actor.appEntries[selected].external)connectApp(selected);else renderSelected();
+ const visibleFrame=frames.get(selected);if(visibleFrame&&!visibleFrame.hidden&&!matchMedia('(prefers-reduced-motion: reduce)').matches){visibleFrame.getAnimations().forEach(a=>a.cancel());visibleFrame.animate([{opacity:.65,transform:'translateY(5px)'},{opacity:1,transform:'translateY(0)'}],{duration:180,easing:'ease-out'});}
  if(updateUrl)history.replaceState(null,'',`?app=${selected}`);
  document.querySelector('.skip').href=`?app=${selected}#workspace`;
 }
@@ -75,12 +77,12 @@ async function loginFromHeader(event){
  try{
    const result=await hubAuth.login($('login-id').value,password);if(!result)return;
    actor=result;role=actor.role;$('hub-login').hidden=true;$('user-strip').hidden=false;$('user-name').textContent=actor.name;$('login-password').value='';
-   drawNavigation();selectApp(new URLSearchParams(location.search).get('app'));$('current-app').focus();
+   noticeFeed.start();drawNavigation();selectApp(new URLSearchParams(location.search).get('app'));$('current-app').focus();
  }catch(error){$('auth-state').textContent='로그인 실패';setGate('로그인하지 못했습니다',error.message||'로그인 정보를 확인해 주세요.');}
  finally{authBusy=false;fields.disabled=false;$('login-password').value='';}
 }
 async function logoutHub(){
- if(authBusy)return;authBusy=true;$('logout').disabled=true;actor=null;
+ if(authBusy)return;authBusy=true;$('logout').disabled=true;actor=null;noticeFeed.stop();closeNotice(false);
  const logoutResults=await Promise.all([...connections.values()].map(connection=>connection.logout().catch(()=>false)));connections.clear();
  for(const frame of frames.values())frame.remove();frames.clear();connectionStates.clear();
  try{await hubAuth.logout();}finally{
@@ -91,15 +93,15 @@ $('logout').onclick=logoutHub;
 $('external').onclick=event=>{if(actor){event.preventDefault();connectApp(selected,true);}};
 $('retry-connection').onclick=()=>actor?connectApp(selected,!!actor.appEntries[selected]?.external):bootAuthentication();
 function closeMenu(){document.body.classList.remove('menu-open');$('backdrop').hidden=true;$('open-menu').setAttribute('aria-expanded','false');$('topbar').inert=false;$('workspace').inert=false;$('sidebar').inert=mobile.matches;if(mobile.matches)$('open-menu').focus();}
-$('open-menu').onclick=()=>{closeHelp(false);document.body.classList.add('menu-open');$('backdrop').hidden=false;$('open-menu').setAttribute('aria-expanded','true');$('sidebar').inert=false;$('topbar').inert=true;$('workspace').inert=true;$('close-menu').focus();};
+$('open-menu').onclick=()=>{closeNotice(false);closeHelp(false);document.body.classList.add('menu-open');$('backdrop').hidden=false;$('open-menu').setAttribute('aria-expanded','true');$('sidebar').inert=false;$('topbar').inert=true;$('workspace').inert=true;$('close-menu').focus();};
 $('close-menu').onclick=closeMenu;$('backdrop').onclick=closeMenu;
 $('expand').onclick=()=>{hideTip();const expanded=document.body.classList.toggle('expanded');$('expand').setAttribute('aria-checked',String(expanded));$('expand').title=expanded?'메뉴 설명 접기':'메뉴 설명 펼치기';};
 function closeHelp(restoreFocus=true){const wasOpen=!$('help-panel').hidden;$('help-panel').hidden=true;$('help').setAttribute('aria-expanded','false');if(wasOpen&&restoreFocus)$('help').focus();}
-$('help').onclick=()=>{const open=$('help-panel').hidden;$('help-panel').hidden=!open;$('help').setAttribute('aria-expanded',String(open));};
+$('help').onclick=()=>{closeNotice(false);const open=$('help-panel').hidden;$('help-panel').hidden=!open;$('help').setAttribute('aria-expanded',String(open));};
 $('close-help').onclick=()=>closeHelp();
 document.addEventListener('pointerdown',event=>{if(!$('help-panel').contains(event.target)&&!$('help').contains(event.target))closeHelp(false);});
 $('reload').onclick=()=>connectApp(selected);
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();closeHelp();if(document.body.classList.contains('menu-open'))closeMenu();}if(e.key==='Tab'&&document.body.classList.contains('menu-open')){const focusable=[$('close-menu'),...document.querySelectorAll('.nav-item')];const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();closeHelp();closeNotice();if(document.body.classList.contains('menu-open'))closeMenu();}if(e.key==='Tab'&&document.body.classList.contains('menu-open')){const focusable=[$('close-menu'),...document.querySelectorAll('.nav-item')];const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
 mobile.addEventListener('change',()=>{closeMenu();hideTip();});$('navigation').addEventListener('scroll',hideTip);window.addEventListener('resize',hideTip);
 function tick(){const now=new Date();$('date').textContent=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'long',day:'numeric',weekday:'long'}).format(now);$('time').textContent=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(now);$('date').dateTime=now.toISOString();$('time').dateTime=now.toISOString();$('help-time').textContent=$('date').textContent+' · '+$('time').textContent+' (서울)';$('help-time').dateTime=now.toISOString();}tick();setInterval(tick,1000);
 $('sidebar').inert=mobile.matches;$('external').hidden=true;$('reload').hidden=true;$('current-app').textContent='작업공간';
@@ -111,3 +113,13 @@ export async function bootAuthentication(sdkFactory){
  if(!ready)setGate('통합 인증 서버 연결이 필요합니다','로그인 연동 코드는 준비되었지만 인증 서버와 앱별 수신 코드가 아직 운영 환경에 적용되지 않았습니다.',true);
 }
 if(document.querySelector('script[data-hub-start]'))bootAuthentication();
+
+function closeNotice(restore=true){const wasOpen=!$('notice-panel').hidden;$('notice-panel').hidden=true;$('notice-trigger').setAttribute('aria-expanded','false');if(wasOpen&&restore)$('notice-trigger').focus();}
+$('notice-trigger').onclick=()=>{const open=$('notice-panel').hidden;closeHelp(false);$('notice-panel').hidden=!open;$('notice-trigger').setAttribute('aria-expanded',String(open));if(open&&actor)noticeFeed.refresh();};
+$('notice-close').onclick=()=>closeNotice();
+$('notice-refresh').onclick=()=>noticeFeed.refresh();
+$('notice-lms').onclick=()=>{closeNotice(false);selectApp('lms');};
+document.addEventListener('pointerdown',e=>{if(!$('notice-panel').contains(e.target)&&!$('notice-trigger').contains(e.target))closeNotice(false);});
+const noticeFeed=createNoticeFeed({getToken:()=>hubAuth.getIdToken(),url:window.SEDU_HUB_CONFIG?.noticeUrl,onChange(state){
+ $('notice-summary').textContent=state.summary;$('notice-content').textContent=state.content;$('notice-meta').textContent=state.meta||'';$('notice-status').textContent=state.status||'';$('notice-refresh').hidden=!actor;$('notice-refresh').disabled=state.loading||false;$('notice-lms').hidden=!actor?.apps.includes('lms');
+}});

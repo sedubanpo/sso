@@ -13,9 +13,9 @@
   <div class="breadcrumb"><span aria-hidden="true">/</span><h1 id="current-app" tabindex="-1">라이브 시간표</h1></div>
   <form class="login-strip" id="hub-login" aria-label="통합 로그인" aria-describedby="auth-state">
     <fieldset disabled><legend class="sr-only">통합 계정으로 로그인</legend>
-      <input type="text" id="login-id" aria-label="로그인 아이디" placeholder="아이디 또는 이메일" autocomplete="username" required>
-      <input type="password" id="login-password" aria-label="로그인 비밀번호" placeholder="비밀번호" autocomplete="current-password" required>
-      <button type="submit" class="login-button">로그인</button>
+      <label class="login-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg><input type="text" id="login-id" aria-label="로그인 아이디" placeholder="아이디 또는 이메일" autocomplete="username" required></label>
+      <label class="login-field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></svg><input type="password" id="login-password" aria-label="로그인 비밀번호" placeholder="비밀번호" autocomplete="current-password" required></label>
+      <button type="submit" class="login-button">로그인 <span aria-hidden="true">→</span></button>
     </fieldset>
     <span id="auth-state" class="auth-state" role="status">연결 확인 중</span>
   </form><div id="user-strip" hidden><span id="user-name"></span><button id="logout" class="button" type="button">로그아웃</button></div>
@@ -32,6 +32,8 @@
     <p class="help-note">앱 메뉴는 인증 서버가 확인한 계정 권한으로 표시됩니다. 각 앱의 데이터 접근 권한은 해당 앱에서 다시 확인합니다.</p>
     <time id="help-time"></time>
   </section>
+  <button id="notice-trigger" class="notice-trigger" aria-label="S-LMS 공지사항 펼치기" aria-expanded="false" aria-controls="notice-panel"><span class="notice-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m4 10 15-5v14L4 14zm3 5 2 6h3l-2-5M4 10H2v4h2m18-7 1-1m-1 6h1m-1 5 1 1"/></svg></span><span class="notice-preview"><small>공지사항</small><span id="notice-summary">로그인 후 확인하세요</span></span><span class="notice-chevron" aria-hidden="true">⌄</span></button>
+  <section id="notice-panel" aria-label="S-LMS 공지사항" hidden><div class="help-heading"><h2>공지사항 <small>S-LMS</small></h2><button class="icon-button" id="notice-close" aria-label="공지사항 닫기">×</button></div><p id="notice-content">로그인하면 S-LMS의 공지사항을 확인할 수 있습니다.</p><p id="notice-meta"></p><div class="notice-footer"><span id="notice-status" role="status"></span><button id="notice-refresh" class="button" hidden>새로고침</button><button id="notice-lms" class="button" hidden>S-LMS에서 보기 ↗</button></div></section>
   <div class="clock"><time id="date"></time><time id="time"></time></div>
 </header>
 <button id="backdrop" class="backdrop" aria-label="앱 메뉴 닫기" tabindex="-1" hidden></button>
@@ -42,7 +44,7 @@
 </aside>
 <main id="workspace" tabindex="-1" aria-label="앱 작업 화면">
   <section class="app-stage" aria-label="선택한 앱">
-    <div id="auth-gate"><h2 id="gate-title">상단에서 로그인해 주세요</h2><p id="gate-message">로그인하면 사용할 수 있는 앱이 표시됩니다.</p><button class="button" id="retry-connection" hidden>다시 연결</button></div>
+    <div id="auth-gate"><div id="loading-art" hidden aria-hidden="true"><div class="orbit orbit-one"><i></i></div><div class="orbit orbit-two"><i></i></div><div class="loading-core" id="loading-icon"></div><div class="loading-spark spark-one"></div><div class="loading-spark spark-two"></div></div><h2 id="gate-title">상단에서 로그인해 주세요</h2><p id="gate-message">로그인하면 사용할 수 있는 앱이 표시됩니다.</p><button class="button" id="retry-connection" hidden>다시 연결</button></div>
     <div id="frame-host"></div>
     <div id="external-panel" hidden>
       <div class="external-symbol" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></svg></div>
