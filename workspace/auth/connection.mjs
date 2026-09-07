@@ -1,5 +1,5 @@
 export const randomNonce=()=>{const bytes=crypto.getRandomValues(new Uint8Array(32));return btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');};
-export function createConnection({appId,entry,target,getIdToken,brokerUrl,onState,timeoutMs=20000,windowObject=window}){
+export function createConnection({appId,entry,target,getIdToken,brokerUrl,onState,timeoutMs=60000,windowObject=window}){
   const nonce=randomNonce(),url=new URL(entry);url.searchParams.set('hub_nonce',nonce);
   let closed=false,busy=false,completed=false,finishLogout=null;
   const stop=()=>{closed=true;clearTimeout(timer);windowObject.removeEventListener('message',receive);};
