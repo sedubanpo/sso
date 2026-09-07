@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#2456b8"><title>에스에듀 허브</title>
+  <link rel="icon" href="assets/sedu-logo.png"><link rel="stylesheet" href="styles.css"><script src="runtime-config.js" defer></script><script type="module" data-hub-start src="app.js"></script>
+</head>
+<body>
+<a class="skip" href="#workspace">작업 화면으로 건너뛰기</a>
+<header class="topbar" id="topbar">
+  <button class="icon-button mobile-menu" id="open-menu" aria-label="앱 메뉴 열기" aria-expanded="false" aria-controls="sidebar"></button>
+  <div class="brand"><img src="assets/sedu-logo.png" alt="에스에듀" width="36" height="36"><strong>에스에듀 허브</strong></div>
+  <div class="breadcrumb"><span aria-hidden="true">/</span><h1 id="current-app" tabindex="-1">라이브 시간표</h1></div>
+  <form class="login-strip" id="hub-login" aria-label="통합 로그인" aria-describedby="auth-state">
+    <fieldset disabled><legend class="sr-only">통합 계정으로 로그인</legend>
+      <input type="text" id="login-id" aria-label="로그인 아이디" placeholder="아이디 또는 이메일" autocomplete="username" required>
+      <input type="password" id="login-password" aria-label="로그인 비밀번호" placeholder="비밀번호" autocomplete="current-password" required>
+      <button type="submit" class="login-button">로그인</button>
+    </fieldset>
+    <span id="auth-state" class="auth-state" role="status">연결 확인 중</span>
+  </form><div id="user-strip" hidden><span id="user-name"></span><button id="logout" class="button" type="button">로그아웃</button></div>
+  <div class="header-actions" role="group" aria-label="현재 앱 도구">
+    <button id="reload" class="icon-button" type="button" aria-label="현재 앱 다시 불러오기" title="다시 불러오기"></button>
+    <a id="external" class="icon-button" target="_blank" rel="noopener noreferrer" aria-label="현재 앱 새 탭에서 열기" title="새 탭에서 열기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7m0-7L10 14M10 4H4v16h16v-6"/></svg></a>
+    <button id="help" class="icon-button" aria-label="연결 안내" title="연결 안내" aria-expanded="false" aria-controls="help-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6m0-10v.1"/></svg></button>
+  </div>
+  <section id="help-panel" aria-label="연결 안내" hidden>
+    <div class="help-heading"><h2>연결 안내</h2><button id="close-help" class="icon-button" aria-label="연결 안내 닫기"></button></div>
+    <p id="app-description"></p><p id="connection-state" role="status">앱을 불러오는 중입니다…</p>
+    <p>상단에서 로그인하면 허용된 앱에 같은 계정으로 연결합니다. 연결 오류가 나오면 해당 앱의 연동 상태를 확인해 주세요.</p>
+    <p>화면이 보이지 않으면 상단의 다시 불러오기 또는 새 탭 열기를 이용하세요.</p>
+    <p class="help-note">앱 메뉴는 인증 서버가 확인한 계정 권한으로 표시됩니다. 각 앱의 데이터 접근 권한은 해당 앱에서 다시 확인합니다.</p>
+    <time id="help-time"></time>
+  </section>
+  <div class="clock"><time id="date"></time><time id="time"></time></div>
+</header>
+<button id="backdrop" class="backdrop" aria-label="앱 메뉴 닫기" tabindex="-1" hidden></button>
+<aside id="sidebar" class="sidebar" aria-label="앱 메뉴">
+  <div class="sidebar-head"><button id="expand" class="icon-button" role="switch" aria-checked="false" aria-label="메뉴 설명 펼치기" title="메뉴 설명 펼치기"></button><span class="expanded-label">앱 작업공간</span><button id="close-menu" class="icon-button mobile-close" aria-label="앱 메뉴 닫기"></button></div>
+  <nav id="navigation" aria-label="업무 앱"></nav>
+  <div class="sidebar-foot"><span class="mint-dot"></span><span class="expanded-label">에스에듀 워크스페이스</span></div>
+</aside>
+<main id="workspace" tabindex="-1" aria-label="앱 작업 화면">
+  <section class="app-stage" aria-label="선택한 앱">
+    <div id="auth-gate"><h2 id="gate-title">상단에서 로그인해 주세요</h2><p id="gate-message">로그인하면 사용할 수 있는 앱이 표시됩니다.</p><button class="button" id="retry-connection" hidden>다시 연결</button></div>
+    <div id="frame-host"></div>
+    <div id="external-panel" hidden>
+      <div class="external-symbol" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7 17 17 7M7 7h10v10"/></svg></div>
+      <h2>인트라넷은 새 탭에서 이용해 주세요</h2>
+      <p>인트라넷의 보안 정책으로 허브 안에 표시할 수 없습니다.<br>새 탭에서 업무를 이어가세요.</p>
+      <a class="button primary" id="external-cta" target="_blank" rel="noopener noreferrer">인트라넷 열기 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 17 17 7M7 7h10v10"/></svg></a>
+      <span class="external-caption">허브의 메뉴와 작업공간은 그대로 유지됩니다.</span>
+    </div>
+  </section>
+</main>
+<div id="tooltip" role="tooltip" hidden></div>
+</body></html>
