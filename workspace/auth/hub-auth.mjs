@@ -27,7 +27,7 @@ async function loadFirebase(){
     return sdk.signInWithEmailAndPassword(auth,email,password);
   },resetPassword:email=>sdk.sendPasswordResetEmail(auth,email),changePassword:async(current,next)=>{const user=auth.currentUser;if(!user?.email)throw Error('다시 로그인해 주세요.');await sdk.reauthenticateWithCredential(user,sdk.EmailAuthProvider.credential(user.email,current));await sdk.updatePassword(user,next);},logout:()=>sdk.signOut(auth),get user(){return auth.currentUser;}};
 }
-export async function createHubAuth({brokerUrl,sdkFactory=loadFirebase}){
+export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northeast3-fir-lms-prod.cloudfunctions.net/hubRecoveryApi',sdkFactory=loadFirebase}){
   let sdk=null,actor=null,generation=0;
   async function request(path,body){
     const user=sdk?.user;if(!user)throw Error('상단에서 로그인해 주세요.');
@@ -54,11 +54,11 @@ export async function createHubAuth({brokerUrl,sdkFactory=loadFirebase}){
         throw error;
       }
     },
-    async resetPassword(identifier){
+    async resetPassword(identifier,birthDate){
       const email=normalizeIdentifier(identifier);
-      if(email.endsWith('@sedu-auth.local'))throw Error('휴대전화 아이디는 이메일을 받을 수 없습니다. 학원 관리자에게 본인 확인 후 비밀번호 초기화를 요청해 주세요.');
-      if(!sdk)sdk=await sdkFactory();
-      try{await sdk.resetPassword(email);}catch(error){if(error.code!=='auth/user-not-found')throw Error('재설정 메일을 요청하지 못했습니다. 이메일을 확인하거나 잠시 후 다시 시도해 주세요.');}
+      if(email.endsWith('@sedu-auth.local'))throw Error('계정 관리에 등록한 복구 이메일을 입력해 주세요.');
+      const response=await fetch(recoveryUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({email,birthDate}),signal:AbortSignal.timeout(45000)});
+      const result=await response.json();if(!response.ok)throw Error(result.error||'복구 메일을 요청하지 못했습니다. 잠시 후 다시 시도해 주세요.');
     },
     async changePassword(current,next){
       if(!actor||!sdk?.user)throw Error('다시 로그인해 주세요.');

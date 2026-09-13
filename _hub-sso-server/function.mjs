@@ -12,3 +12,5 @@ export const hubSsoApi=onRequest({region:'asia-northeast3',maxInstances:10,invok
   }
   return handler(req,res);
 });
+
+export {hubRecoveryApi} from './recovery-function.mjs';

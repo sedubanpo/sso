@@ -1,5 +1,5 @@
 import {createNoticeFeed} from './auth/notices.mjs';
-import {createHubAuth} from './auth/hub-auth.mjs?v=20260914-account';
+import {createHubAuth} from './auth/hub-auth.mjs?v=20260914-recovery';
 import {createConnection} from './auth/connection.mjs';
 'use strict';
 const apps = [
@@ -108,7 +108,7 @@ mobile.addEventListener('change',()=>{closeMenu();hideTip();});$('navigation').a
 function tick(){const now=new Date();$('date').textContent=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'long',day:'numeric',weekday:'long'}).format(now);$('time').textContent=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(now);$('date').dateTime=now.toISOString();$('time').dateTime=now.toISOString();$('help-time').textContent=$('date').textContent+' · '+$('time').textContent+' (서울)';$('help-time').dateTime=now.toISOString();}tick();setInterval(tick,1000);
 $('sidebar').inert=mobile.matches;$('external').hidden=true;$('reload').hidden=true;$('current-app').textContent='작업공간';
 export async function bootAuthentication(sdkFactory){
- hubAuth=await createHubAuth({brokerUrl,...(sdkFactory?{sdkFactory}:{})});
+ hubAuth=await createHubAuth({brokerUrl,recoveryUrl:window.SEDU_HUB_CONFIG?.recoveryUrl,...(sdkFactory?{sdkFactory}:{})});
  const ready=brokerUrl&&await hubAuth.available();
  $('hub-login').querySelector('fieldset').disabled=!ready;
  $('auth-state').textContent=ready?'로그인':'서버 연결 필요';
@@ -127,9 +127,9 @@ const noticeFeed=createNoticeFeed({getToken:()=>hubAuth.getIdToken(),url:window.
 }});
 
 let passwordMode='reset',passwordBusy=false;
-function openPassword(mode){passwordMode=mode;const change=mode==='change';$('password-form').reset();$('password-result').textContent='';$('password-submit').hidden=false;$('password-title').textContent=change?'비밀번호 변경':'비밀번호 찾기';$('password-description').textContent=change?'현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다.':'가입한 실제 이메일로 재설정 링크를 요청하세요. 휴대전화 아이디만 사용하는 경우 학원 관리자에게 초기화를 요청해 주세요.';$('reset-field').hidden=change;$('change-fields').hidden=!change;$('reset-email').required=!change;['current-password','new-password','confirm-password'].forEach(id=>$(id).required=change);$('password-submit').textContent=change?'비밀번호 변경':'재설정 메일 요청';$('password-dialog').showModal();}
+function openPassword(mode){passwordMode=mode;const change=mode==='change';$('password-form').reset();$('password-result').textContent='';$('password-submit').hidden=false;$('password-title').textContent=change?'비밀번호 변경':'비밀번호 찾기';$('password-description').textContent=change?'현재 비밀번호를 확인한 뒤 새 비밀번호로 변경합니다.':'계정 관리에 등록된 복구 이메일과 생년월일을 입력해 주세요. 일치하는 계정의 복구 이메일로만 재설정 링크를 보냅니다.';$('reset-field').hidden=change;$('reset-birth-field').hidden=change;$('reset-birth').required=!change;$('change-fields').hidden=!change;$('reset-email').required=!change;['current-password','new-password','confirm-password'].forEach(id=>$(id).required=change);$('password-submit').textContent=change?'비밀번호 변경':'재설정 메일 요청';$('password-dialog').showModal();}
 $('forgot-password').onclick=()=>openPassword('reset');$('change-password').onclick=()=>openPassword('change');
 $('password-close').onclick=()=>{if(!passwordBusy)$('password-dialog').close();};
 $('password-dialog').addEventListener('cancel',e=>{if(passwordBusy)e.preventDefault();});
 $('password-dialog').addEventListener('close',()=>{$('password-form').reset();});
-$('password-form').onsubmit=async e=>{e.preventDefault();if(passwordBusy)return;passwordBusy=true;$('password-submit').disabled=true;$('password-result').textContent='처리 중입니다…';try{if(!hubAuth)throw Error('인증 연결을 확인하고 다시 시도해 주세요.');if(passwordMode==='reset'){await hubAuth.resetPassword($('reset-email').value);$('password-result').textContent='등록된 이메일이라면 재설정 안내가 발송됩니다. 받은편지함과 스팸함을 확인해 주세요.';}else{if($('new-password').value!==$('confirm-password').value)throw Error('새 비밀번호가 서로 다릅니다.');await hubAuth.changePassword($('current-password').value,$('new-password').value);$('password-result').textContent='비밀번호가 변경되었습니다. 다음 로그인부터 새 비밀번호를 사용해 주세요.';}$('password-form').reset();$('password-submit').hidden=true;}catch(error){$('password-result').textContent=error.message;}finally{passwordBusy=false;$('password-submit').disabled=false;}};
+$('password-form').onsubmit=async e=>{e.preventDefault();if(passwordBusy)return;passwordBusy=true;$('password-submit').disabled=true;$('password-result').textContent='처리 중입니다…';try{if(!hubAuth)throw Error('인증 연결을 확인하고 다시 시도해 주세요.');if(passwordMode==='reset'){await hubAuth.resetPassword($('reset-email').value,$('reset-birth').value);$('password-result').textContent='입력한 정보가 일치하면 복구 이메일로 재설정 안내가 발송됩니다. 받은편지함과 스팸함을 확인해 주세요.';}else{if($('new-password').value!==$('confirm-password').value)throw Error('새 비밀번호가 서로 다릅니다.');await hubAuth.changePassword($('current-password').value,$('new-password').value);$('password-result').textContent='비밀번호가 변경되었습니다. 다음 로그인부터 새 비밀번호를 사용해 주세요.';}$('password-form').reset();$('password-submit').hidden=true;}catch(error){$('password-result').textContent=error.message;}finally{passwordBusy=false;$('password-submit').disabled=false;}};
