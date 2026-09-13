@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#2456b8"><title>에스에듀 허브</title>
-  <link rel="icon" href="assets/sedu-logo.png"><link rel="stylesheet" href="styles.css?v=20260907-clean"><script src="runtime-config.js" defer></script><script type="module" data-hub-start src="app.js?v=20260907-clean"></script>
+  <link rel="icon" href="assets/hub-mark.svg"><link rel="stylesheet" href="styles.css?v=20260914-account"><script src="runtime-config.js" defer></script><script type="module" data-hub-start src="app.js?v=20260914-account"></script>
 </head>
 <body>
 <a class="skip" href="#workspace">작업 화면으로 건너뛰기</a>
 <header class="topbar" id="topbar">
   <button class="icon-button mobile-menu" id="open-menu" aria-label="앱 메뉴 열기" aria-expanded="false" aria-controls="sidebar"></button>
-  <div class="brand"><img src="assets/sedu-logo.png" alt="에스에듀" width="36" height="36"><strong>에스에듀 허브</strong></div>
+  <div class="brand"><img src="assets/hub-mark.svg" alt="에스에듀 허브" width="36" height="36"><strong>에스에듀 허브</strong></div>
   <div class="breadcrumb"><span aria-hidden="true">/</span><h1 id="current-app" tabindex="-1">라이브 시간표</h1></div>
   <form class="login-strip" id="hub-login" aria-label="통합 로그인" aria-describedby="auth-state">
     <fieldset disabled><legend class="sr-only">통합 계정으로 로그인</legend>
       <label class="login-field"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5 21v-2a7 7 0 0 1 14 0v2"/></svg><input type="text" id="login-id" aria-label="로그인 아이디" placeholder="아이디 또는 이메일" autocomplete="username" required></label>
       <label class="login-field"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="3"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 5v2"/></svg><input type="password" id="login-password" aria-label="로그인 비밀번호" placeholder="비밀번호" autocomplete="current-password" required></label>
       <button type="submit" class="login-button">로그인 <span aria-hidden="true">→</span></button>
-    </fieldset>
-    <span id="auth-state" class="auth-state" role="status">연결 확인 중</span>
-  </form><div id="user-strip" hidden><span id="user-name"></span><button id="logout" class="button" type="button">로그아웃</button></div>
+    </fieldset><button type="button" id="forgot-password" class="account-link">비밀번호 찾기</button>
+    <span id="auth-state" class="sr-only" role="status">연결 확인 중</span>
+  </form><div id="user-strip" hidden><span id="user-name"></span><button id="change-password" class="account-link" type="button">비밀번호 변경</button><button id="logout" class="button" type="button">로그아웃</button></div>
   <div class="header-actions" role="group" aria-label="현재 앱 도구">
     <button id="reload" class="icon-button" type="button" aria-label="현재 앱 다시 불러오기" title="다시 불러오기"></button>
     <a id="external" class="icon-button" target="_blank" rel="noopener noreferrer" aria-label="현재 앱 새 탭에서 열기" title="새 탭에서 열기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7m0-7L10 14M10 4H4v16h16v-6"/></svg></a>
@@ -56,4 +56,4 @@
   </section>
 </main>
 <div id="tooltip" role="tooltip" hidden></div>
-</body></html>
+<dialog id="password-dialog" aria-labelledby="password-title"><form id="password-form"><div class="help-heading"><h2 id="password-title"></h2><button type="button" class="icon-button" id="password-close" aria-label="닫기">×</button></div><p id="password-description"></p><label id="reset-field">가입한 이메일<input id="reset-email" type="email" autocomplete="email"></label><div id="change-fields"><label>현재 비밀번호<input id="current-password" type="password" autocomplete="current-password"></label><label>새 비밀번호<input id="new-password" type="password" autocomplete="new-password" minlength="8"></label><label>새 비밀번호 확인<input id="confirm-password" type="password" autocomplete="new-password" minlength="8"></label></div><p id="password-result" role="status"></p><button class="login-button" id="password-submit" type="submit"></button></form></dialog></body></html>

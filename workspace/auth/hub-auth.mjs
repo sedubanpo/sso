@@ -25,7 +25,7 @@ async function loadFirebase(){
       }
     }
     return sdk.signInWithEmailAndPassword(auth,email,password);
-  },logout:()=>sdk.signOut(auth),get user(){return auth.currentUser;}};
+  },resetPassword:email=>sdk.sendPasswordResetEmail(auth,email),changePassword:async(current,next)=>{const user=auth.currentUser;if(!user?.email)throw Error('다시 로그인해 주세요.');await sdk.reauthenticateWithCredential(user,sdk.EmailAuthProvider.credential(user.email,current));await sdk.updatePassword(user,next);},logout:()=>sdk.signOut(auth),get user(){return auth.currentUser;}};
 }
 export async function createHubAuth({brokerUrl,sdkFactory=loadFirebase}){
   let sdk=null,actor=null,generation=0;
@@ -52,6 +52,23 @@ export async function createHubAuth({brokerUrl,sdkFactory=loadFirebase}){
         if(error.code==='auth/invalid-credential'||error.code==='auth/wrong-password'||error.code==='auth/user-not-found')throw Error('아이디 또는 비밀번호를 확인해 주세요.');
         if(error.code==='auth/too-many-requests')throw Error('로그인 시도가 많습니다. 잠시 후 다시 시도해 주세요.');
         throw error;
+      }
+    },
+    async resetPassword(identifier){
+      const email=normalizeIdentifier(identifier);
+      if(email.endsWith('@sedu-auth.local'))throw Error('휴대전화 아이디는 이메일을 받을 수 없습니다. 학원 관리자에게 본인 확인 후 비밀번호 초기화를 요청해 주세요.');
+      if(!sdk)sdk=await sdkFactory();
+      try{await sdk.resetPassword(email);}catch(error){if(error.code!=='auth/user-not-found')throw Error('재설정 메일을 요청하지 못했습니다. 이메일을 확인하거나 잠시 후 다시 시도해 주세요.');}
+    },
+    async changePassword(current,next){
+      if(!actor||!sdk?.user)throw Error('다시 로그인해 주세요.');
+      if(!current)throw Error('현재 비밀번호를 입력해 주세요.');
+      if(next.length<8)throw Error('새 비밀번호는 8자 이상 입력해 주세요.');
+      if(current===next)throw Error('현재 비밀번호와 다른 비밀번호를 입력해 주세요.');
+      try{await sdk.changePassword(current,next);}catch(error){
+        if(['auth/invalid-credential','auth/wrong-password'].includes(error.code))throw Error('현재 비밀번호를 확인해 주세요.');
+        if(error.code==='auth/weak-password'||error.code==='auth/password-does-not-meet-requirements')throw Error('새 비밀번호가 계정의 보안 기준에 맞지 않습니다. 더 긴 비밀번호를 입력해 주세요.');
+        throw Error('비밀번호를 변경하지 못했습니다. 다시 로그인한 후 시도해 주세요.');
       }
     },
     async getIdToken(){if(!sdk?.user||!actor)throw Error('로그인이 만료되었습니다. 다시 로그인해 주세요.');return sdk.user.getIdToken();},
