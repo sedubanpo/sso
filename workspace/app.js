@@ -30,16 +30,18 @@ function drawNavigation(){
  for(const app of apps.filter(a=>!!a.staff===staff&&actor?.apps.includes(a.id))){const button=document.createElement('button');button.className='nav-item';button.dataset.app=app.id;button.setAttribute('aria-label',`${app.name}, ${app.description}`);button.innerHTML=icon(app.icon)+`<span class="nav-copy"><strong>${app.name}</strong><small>${app.description}</small></span>`;button.addEventListener('click',()=>{selectApp(app.id);if(mobile.matches)closeMenu();});button.addEventListener('mouseenter',()=>showTip(button,app));button.addEventListener('mouseleave',()=>{tooltipTimer=setTimeout(hideTip,150);});button.addEventListener('focus',()=>showTip(button,app));button.addEventListener('blur',hideTip);group.append(button);} $('navigation').append(group);}
 }
 function setGate(title,message,retry=false,loading=false){$('loading-art').hidden=!loading;$('auth-gate').classList.toggle('is-loading',loading);$('auth-gate').setAttribute('aria-busy',String(loading));$('auth-gate').hidden=false;$('gate-title').textContent=title;$('gate-message').textContent=message;$('retry-connection').hidden=!retry;}
+// Embedding is a shell presentation policy; server app permissions remain authoritative.
+function opensExternally(id){return id!=='intranet'&&!!actor?.appEntries[id]?.external;}
 function renderSelected(){
  const app=apps.find(a=>a.id===selected);if(!app)return;
  const state=connectionStates.get(selected);
  for(const [id,frame] of frames)frame.hidden=id!==selected||state?.state!=='ready';
  $('external-panel').hidden=true;
  if(state?.state==='ready'){
-   if(actor.appEntries[selected].external){setGate('새 탭에서 연결되었습니다','열린 앱 탭에서 업무를 이어가세요.');}
+   if(opensExternally(selected)){setGate('새 탭에서 연결되었습니다','열린 앱 탭에서 업무를 이어가세요.');}
    else $('auth-gate').hidden=true;
  }else if(state?.state==='error')setGate('앱에 연결하지 못했습니다',state.message,true);
- else setGate(actor.appEntries[selected].external?'새 탭에서 이용하는 앱입니다':'로그인을 연결하고 있습니다…',actor.appEntries[selected].external?'상단의 새 탭 열기로 같은 계정을 연결하세요.':'계정과 앱 사용 권한을 확인하고 있습니다.',false,!actor.appEntries[selected].external);
+ else setGate(opensExternally(selected)?'새 탭에서 이용하는 앱입니다':'로그인을 연결하고 있습니다…',opensExternally(selected)?'상단의 새 탭 열기로 같은 계정을 연결하세요.':'계정과 앱 사용 권한을 확인하고 있습니다.',false,!opensExternally(selected));
 }
 function connectApp(id,external=false){
  const app=apps.find(a=>a.id===id),entry=actor?.appEntries[id];if(!entry||!app)return;
@@ -65,8 +67,8 @@ function selectApp(id,updateUrl=true){
  document.querySelectorAll('.nav-item').forEach(b=>{if(b.dataset.app===selected)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
  document.querySelector('[aria-current="page"]')?.scrollIntoView({block:'nearest'});
  $('current-app').textContent=app.name;$('current-app').title=app.name+' · '+app.description;$('app-description').textContent=app.description;document.title=`${app.name} · 에스에듀 허브`;
- $('external').href=app.url;$('external-cta').href=app.url;$('reload').hidden=!!actor.appEntries[selected].external;
- if(!connections.has(selected)&&!actor.appEntries[selected].external)connectApp(selected);else renderSelected();
+ $('external').href=app.url;$('external-cta').href=app.url;$('reload').hidden=!!opensExternally(selected);
+ if(!connections.has(selected)&&!opensExternally(selected))connectApp(selected);else renderSelected();
  const visibleFrame=frames.get(selected);if(visibleFrame&&!visibleFrame.hidden&&!matchMedia('(prefers-reduced-motion: reduce)').matches){visibleFrame.getAnimations().forEach(a=>a.cancel());visibleFrame.animate([{opacity:.65,transform:'translateY(5px)'},{opacity:1,transform:'translateY(0)'}],{duration:180,easing:'ease-out'});}
  if(updateUrl)history.replaceState(null,'',`?app=${selected}`);
  document.querySelector('.skip').href=`?app=${selected}#workspace`;
