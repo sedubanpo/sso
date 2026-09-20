@@ -1,6 +1,6 @@
 import {openAppTab} from './auth/new-tab.mjs?v=20260920';
 import {createNoticeFeed} from './auth/notices.mjs';
-import {createHubAuth} from './auth/hub-auth.mjs?v=20260914-recovery';
+import {createHubAuth} from './auth/hub-auth.mjs?v=20260920-workers';
 import {createConnection} from './auth/connection.mjs?v=20260920';
 'use strict';
 const apps = [
@@ -87,7 +87,9 @@ async function loginFromHeader(event){
  try{
    const result=await hubAuth.login($('login-id').value,password);if(!result)return;
    actor=result;role=actor.role;$('hub-login').hidden=true;$('user-strip').hidden=false;$('user-name').textContent=actor.name;$('login-password').value='';
-   noticeFeed.start();drawNavigation();selectApp(new URLSearchParams(location.search).get('app'));$('current-app').focus();
+   $('choose-worker').hidden=!result.canSwitchWorker;$('change-password').hidden=false;
+   if(result.canSwitchWorker){actor=null;drawNavigation();setGate('근무자 계정을 선택해 주세요','선택한 계정의 권한으로 업무를 시작합니다.');await showWorkers(true);}
+   else{noticeFeed.start();drawNavigation();selectApp(new URLSearchParams(location.search).get('app'));$('current-app').focus();}
  }catch(error){$('auth-state').textContent='로그인 실패';setGate('로그인하지 못했습니다',error.message||'로그인 정보를 확인해 주세요.');}
  finally{authBusy=false;fields.disabled=false;$('login-password').value='';}
 }
@@ -146,3 +148,28 @@ const warmedOrigins=new Set();
 function warmApp(id){const entry=actor?.appEntries[id];if(!entry)return;const origin=new URL(entry.url).origin;if(origin===location.origin||warmedOrigins.has(origin))return;warmedOrigins.add(origin);const link=document.createElement('link');link.rel='preconnect';link.href=origin;document.head.append(link);}
 $('navigation').addEventListener('pointerover',e=>{const id=e.target.closest('.nav-row')?.querySelector('[data-app]')?.dataset.app;if(id)warmApp(id);});
 $('navigation').addEventListener('focusin',e=>{const id=e.target.closest('.nav-row')?.querySelector('[data-app]')?.dataset.app;if(id)warmApp(id);});
+
+let workerBusy=false,workerRequired=false;
+async function showWorkers(required=false){
+ if(workerBusy)return;workerBusy=true;$('worker-cancel').disabled=true;
+ workerRequired=required;$('worker-result').textContent='근무자 목록을 불러오고 있습니다…';$('worker-submit').disabled=true;$('worker-cancel').textContent=required?'로그아웃':'취소';
+ $('worker-select').replaceChildren(new Option('근무자를 선택해 주세요',''));
+ $('worker-dialog').showModal();
+ try{const {workers}=await hubAuth.workers();for(const person of workers.sort((a,b)=>a.name.localeCompare(b.name,'ko')))$('worker-select').add(new Option(person.name,person.uid));$('worker-select').value=actor?.uid||'';$('worker-result').textContent=workers.length?'':'선택할 수 있는 활성 근무자가 없습니다.';$('worker-submit').disabled=!workers.length;}catch(error){$('worker-result').textContent=error.message;}finally{workerBusy=false;$('worker-cancel').disabled=false;}
+}
+$('choose-worker').onclick=()=>showWorkers(!actor);
+$('worker-cancel').onclick=async()=>{if(workerBusy)return;$('worker-dialog').close();if(workerRequired)await logoutHub();};
+$('worker-dialog').addEventListener('cancel',e=>{e.preventDefault();if(!workerBusy)$('worker-cancel').click();});
+$('worker-form').onsubmit=async event=>{
+ event.preventDefault();if(workerBusy||!$('worker-select').value)return;
+ workerBusy=true;$('worker-submit').disabled=true;$('worker-cancel').disabled=true;$('worker-select').disabled=true;$('worker-result').textContent='기존 앱 연결을 정리하고 계정을 전환하고 있습니다…';
+ try{
+  noticeFeed.stop();closeNotice(false);
+  const results=await Promise.all([...connections.values(),...Array.from(popupConnections).filter(x=>!x.target.closed).map(x=>x.connection)].map(c=>c.logout().catch(()=>false)));
+  connections.clear();if(results.every(Boolean))popupConnections.clear();else for(const item of popupConnections)if(item.target.closed)popupConnections.delete(item);for(const frame of frames.values())frame.remove();frames.clear();connectionStates.clear();actor=null;drawNavigation();
+  if(results.some(x=>!x))throw Error('일부 앱의 로그아웃을 확인하지 못했습니다. 별도로 열린 앱 탭을 닫은 뒤 다시 선택해 주세요.');
+  actor=await hubAuth.switchWorker($('worker-select').value);role=actor.role;$('user-name').textContent=actor.name;$('change-password').hidden=true;
+  workerRequired=false;$('worker-dialog').close();noticeFeed.start();drawNavigation();selectApp(new URLSearchParams(location.search).get('app'));
+ }catch(error){workerRequired=true;$('worker-cancel').textContent='로그아웃';$('worker-result').textContent=error.message;setGate('근무자 계정 선택이 필요합니다','계정 연결을 완료한 뒤 앱을 이용할 수 있습니다.');}
+ finally{workerBusy=false;$('worker-submit').disabled=false;$('worker-cancel').disabled=false;$('worker-select').disabled=false;}
+};

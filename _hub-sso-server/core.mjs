@@ -21,7 +21,7 @@ export function createBroker({identity, store, registry=APPS, hubOrigins, now=Da
     if(!bearer)throw new HttpError(401,'상단에서 로그인해 주세요.');
     let decoded;try{decoded=await identity.verify(bearer);}catch{throw new HttpError(401,'로그인이 만료되었습니다. 다시 로그인해 주세요.');}
     const docs=await identity.profile(decoded.uid);
-    return {actor:authorizeProfile(decoded.uid,...docs,registry),decoded};
+    return {actor:authorizeProfile(decoded.uid,...docs,registry),decoded,docs};
   }
   return async function handle({path,method,origin,bearer,body={}}) {
     if(method!=='POST'&&!(method==='GET'&&['/health','/session'].includes(path)))throw new HttpError(405,'지원하지 않는 요청입니다.');
@@ -38,8 +38,26 @@ export function createBroker({identity, store, registry=APPS, hubOrigins, now=Da
     }
     if(!hubOrigins.includes(origin))throw new HttpError(403,'허용되지 않은 허브 주소입니다.');
     if(path==='/health')return {ready:true};
-    const {actor,decoded}=await session(bearer);
-    if(path==='/session')return {...actor,appEntries:Object.fromEntries(actor.apps.map(id=>[id,registry[id]]))};
+    const {actor,decoded,docs}=await session(bearer);
+    const present=actor=>({...actor,appEntries:Object.fromEntries(actor.apps.map(id=>[id,registry[id]]))});
+    const maySwitch=async()=>String(docs[0]?.role).toUpperCase()==='ADMIN'&&!!identity.isOperator&&await identity.isOperator(decoded.uid);
+    if(path==='/session')return {...present(actor),canSwitchWorker:await maySwitch()};
+    if(path==='/workers'||path==='/switch-worker'){
+      if(method!=='POST'||!await maySwitch())throw new HttpError(403,'이 계정은 근무자 계정을 선택할 수 없습니다.');
+      if(path==='/workers'){
+        const workers=[];
+        for(const candidate of await identity.workers()){
+          try{const target=authorizeProfile(candidate.uid,...candidate.docs,registry);if(target.role==='staff')workers.push({uid:target.uid,name:target.name});}catch{}
+        }
+        return {workers,operator:{uid:actor.uid,name:actor.name}};
+      }
+      if(typeof body.uid!=='string'||!body.uid||body.uid.length>128)throw new HttpError(400,'근무자를 선택해 주세요.');
+      const [targetUser,targetDocs]=await Promise.all([identity.user(body.uid),identity.profile(body.uid)]);
+      const target=authorizeProfile(body.uid,...targetDocs,registry);
+      if(targetUser.disabled||target.role!=='staff')throw new HttpError(403,'활성 근무자 계정만 선택할 수 있습니다.');
+      await identity.auditSwitch({operatorUid:decoded.uid,targetUid:target.uid,at:now()});
+      return {actor:present(target),customToken:await identity.mint(target.uid)};
+    }
     if(path==='/ticket') {
       if(!actor.apps.includes(body.appId))throw new HttpError(403,'이 앱의 사용 권한이 없습니다.');
       if(!tokenPattern.test(body.challenge||'')||!tokenPattern.test(body.nonce||''))throw new HttpError(400,'연결 요청 형식이 올바르지 않습니다.');

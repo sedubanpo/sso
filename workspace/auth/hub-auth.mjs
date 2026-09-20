@@ -5,11 +5,11 @@ export function normalizeIdentifier(value){
   if(!/^0\d{8,10}$/.test(digits))throw Error('이메일 또는 휴대전화 번호를 확인해 주세요.');
   return digits+'@sedu-auth.local';
 }
-async function loadFirebase(){
+async function loadFirebase(name='sedu-hub'){
   const [{initializeApp},sdk]=await Promise.all([import('https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js'),import('https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js')]);
   // Memory-only: do not inspect or reuse credentials saved by other sessions/apps.
-  const auth=sdk.initializeAuth(initializeApp(FIREBASE_CONFIG,'sedu-hub'),{persistence:sdk.inMemoryPersistence});
-  return {login:async(id,password)=>{
+  const auth=sdk.initializeAuth(initializeApp(FIREBASE_CONFIG,name),{persistence:sdk.inMemoryPersistence});
+  return {loginWithToken:token=>sdk.signInWithCustomToken(auth,token),login:async(id,password)=>{
     let email=id;
     if(id.endsWith('@sedu-auth.local')){
       const phone=id.split('@')[0],candidates=[phone,...(phone.startsWith('010')?[phone.slice(3)]:[])];
@@ -28,7 +28,7 @@ async function loadFirebase(){
   },resetPassword:email=>sdk.sendPasswordResetEmail(auth,email),changePassword:async(current,next)=>{const user=auth.currentUser;if(!user?.email)throw Error('다시 로그인해 주세요.');await sdk.reauthenticateWithCredential(user,sdk.EmailAuthProvider.credential(user.email,current));await sdk.updatePassword(user,next);},logout:()=>sdk.signOut(auth),get user(){return auth.currentUser;}};
 }
 export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northeast3-fir-lms-prod.cloudfunctions.net/hubRecoveryApi',sdkFactory=loadFirebase}){
-  let sdk=null,actor=null,generation=0;
+  let sdk=null,workerSdk=null,usingWorker=false,actor=null,generation=0;
   async function request(path,body){
     const user=sdk?.user;if(!user)throw Error('상단에서 로그인해 주세요.');
     const token=await user.getIdToken();
@@ -54,6 +54,15 @@ export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northea
         throw error;
       }
     },
+    async workers(){return request('/workers',{});},
+    async switchWorker(uid){
+      const result=await request('/switch-worker',{uid});
+      if(!workerSdk)workerSdk=await sdkFactory('sedu-hub-worker');
+      actor=null;await workerSdk.logout();
+      usingWorker=false;
+      await workerSdk.loginWithToken(result.customToken);
+      usingWorker=true;actor=result.actor;return {...actor,canSwitchWorker:true};
+    },
     async resetPassword(identifier,birthDate){
       const email=normalizeIdentifier(identifier);
       if(email.endsWith('@sedu-auth.local'))throw Error('계정 관리에 등록한 복구 이메일을 입력해 주세요.');
@@ -61,6 +70,7 @@ export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northea
       const result=await response.json();if(!response.ok)throw Error(result.error||'복구 메일을 요청하지 못했습니다. 잠시 후 다시 시도해 주세요.');
     },
     async changePassword(current,next){
+      if(usingWorker)throw Error('근무자 계정의 비밀번호는 해당 계정으로 직접 로그인해 변경해 주세요.');
       if(!actor||!sdk?.user)throw Error('다시 로그인해 주세요.');
       if(!current)throw Error('현재 비밀번호를 입력해 주세요.');
       if(next.length<8)throw Error('새 비밀번호는 8자 이상 입력해 주세요.');
@@ -71,7 +81,7 @@ export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northea
         throw Error('비밀번호를 변경하지 못했습니다. 다시 로그인한 후 시도해 주세요.');
       }
     },
-    async getIdToken(){if(!sdk?.user||!actor)throw Error('로그인이 만료되었습니다. 다시 로그인해 주세요.');return sdk.user.getIdToken();},
-    async logout(){generation++;actor=null;await sdk?.logout();}
+    async getIdToken(){if(!sdk?.user||!actor)throw Error('로그인이 만료되었습니다. 다시 로그인해 주세요.');return (usingWorker?workerSdk:sdk).user.getIdToken();},
+    async logout(){generation++;actor=null;usingWorker=false;await workerSdk?.logout();await sdk?.logout();}
   };
 }
