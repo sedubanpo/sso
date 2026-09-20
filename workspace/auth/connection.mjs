@@ -2,7 +2,7 @@ export const randomNonce=()=>{const bytes=crypto.getRandomValues(new Uint8Array(
 export function createConnection({appId,entry,target,getIdToken,brokerUrl,onState,timeoutMs=60000,windowObject=window}){
   const nonce=randomNonce(),url=new URL(entry);url.searchParams.set('hub_nonce',nonce);
   let closed=false,busy=false,completed=false,finishLogout=null;
-  const stop=()=>{closed=true;clearTimeout(timer);windowObject.removeEventListener('message',receive);};
+  const stop=()=>{closed=true;clearTimeout(timer);clearTimeout(slowTimer);windowObject.removeEventListener('message',receive);};
   async function receive(event){
     const d=event.data;
     if(closed||event.source!==target||event.origin!==url.origin||!d||d.channel!=='sedu-hub-v1'||d.appId!==appId||d.nonce!==nonce)return;
@@ -18,14 +18,15 @@ export function createConnection({appId,entry,target,getIdToken,brokerUrl,onStat
         if(!closed)target.postMessage({channel:'sedu-hub-v1',type:'ticket',appId,nonce,code:result.code},url.origin);
       }catch(error){if(!closed){onState('error',error.message);stop();}}
     }
-    if(d.type==='authenticated'&&busy){completed=true;clearTimeout(timer);onState('ready');}
+    if(d.type==='authenticated'&&busy){completed=true;clearTimeout(timer);clearTimeout(slowTimer);onState('ready');}
     if(d.type==='error'){onState('error','앱에서 계정 또는 권한을 확인하지 못했습니다. 다시 연결해 주세요.');stop();}
   }
   windowObject.addEventListener('message',receive);
+  const slowTimer=setTimeout(()=>{if(!closed&&!completed)onState('pending','연결이 지연되고 있습니다. 잠시 기다리거나 상단에서 새 탭으로 열 수 있습니다.');},8000);
   const timer=setTimeout(()=>{onState('error','이 앱의 통합 로그인 연결을 확인하지 못했습니다. 앱별 연동 코드 적용 상태를 확인해 주세요.');stop();},timeoutMs);
   return {url:url.href,stop,setTarget(next){target=next;},logout(){
     if(closed)return Promise.resolve(false);
-    clearTimeout(timer);
+    clearTimeout(timer);clearTimeout(slowTimer);
     return new Promise(resolve=>{const timeout=setTimeout(()=>finishLogout(false),3000);finishLogout=ok=>{clearTimeout(timeout);stop();resolve(ok);};target.postMessage({channel:'sedu-hub-v1',type:'logout',appId,nonce},url.origin);});
   }};
 }

@@ -1,6 +1,7 @@
+import {openAppTab} from './auth/new-tab.mjs?v=20260920';
 import {createNoticeFeed} from './auth/notices.mjs';
 import {createHubAuth} from './auth/hub-auth.mjs?v=20260914-recovery';
-import {createConnection} from './auth/connection.mjs';
+import {createConnection} from './auth/connection.mjs?v=20260920';
 'use strict';
 const apps = [
  {id:'timetable',name:'라이브 시간표',description:'당일 수업 현황과 반 배정 확인',url:'https://sedubanpo.github.io/timetable',icon:'calendar'},
@@ -16,6 +17,8 @@ const paths={calendar:'M8 3v4m8-4v4M4 10h16M5 5h14a1 1 0 0 1 1 1v14H4V6a1 1 0 0 
 const icon=name=>`<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${paths[name]}"/></svg>`;
 const $=id=>document.getElementById(id);
 let role='teacher',selected='',timer,tooltipTimer,actor=null,hubAuth=null,authBusy=false;
+const popupConnections=new Set();
+let tabStatusTimer;
 const connections=new Map(),frames=new Map(),connectionStates=new Map();
 const brokerUrl=window.SEDU_HUB_CONFIG?.brokerUrl||'';
 const mobile=matchMedia('(max-width:760px)');
@@ -27,7 +30,7 @@ function showTip(button,app){if(document.body.classList.contains('expanded')||mo
 function drawNavigation(){
  $('navigation').replaceChildren();if(!actor)return;
  for(const staff of [false,true]){if(staff&&role==='teacher')continue;const group=document.createElement('section');group.className='nav-group';group.setAttribute('aria-label',staff?'실무자 운영':'수업 운영');group.innerHTML=`<h2 class="group-label">${staff?'실무자 운영':'수업 운영'}</h2>`;
- for(const app of apps.filter(a=>!!a.staff===staff&&actor?.apps.includes(a.id))){const button=document.createElement('button');button.className='nav-item';button.dataset.app=app.id;button.setAttribute('aria-label',`${app.name}, ${app.description}`);button.innerHTML=icon(app.icon)+`<span class="nav-copy"><strong>${app.name}</strong><small>${app.description}</small></span>`;button.addEventListener('click',()=>{selectApp(app.id);if(mobile.matches)closeMenu();});button.addEventListener('mouseenter',()=>showTip(button,app));button.addEventListener('mouseleave',()=>{tooltipTimer=setTimeout(hideTip,150);});button.addEventListener('focus',()=>showTip(button,app));button.addEventListener('blur',hideTip);group.append(button);} $('navigation').append(group);}
+ for(const app of apps.filter(a=>!!a.staff===staff&&actor?.apps.includes(a.id))){const button=document.createElement('button');button.className='nav-item';button.dataset.app=app.id;button.setAttribute('aria-label',`${app.name}, ${app.description}`);button.innerHTML=icon(app.icon)+`<span class="nav-copy"><strong>${app.name}</strong><small>${app.description}</small></span>`;button.addEventListener('click',()=>{selectApp(app.id);if(mobile.matches)closeMenu();});button.addEventListener('mouseenter',()=>showTip(button,app));button.addEventListener('mouseleave',()=>{tooltipTimer=setTimeout(hideTip,150);});button.addEventListener('focus',()=>showTip(button,app));button.addEventListener('blur',hideTip);const row=document.createElement('div');row.className='nav-row';const open=document.createElement('button');open.className='nav-new-tab';open.type='button';open.setAttribute('aria-label',app.name+' 새 탭에서 열기');open.title=app.name+' 새 탭에서 열기';open.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7m0-7L10 14M10 4H4v16h16v-6"/></svg>';open.onclick=()=>openInNewTab(app.id);row.append(button,open);group.append(row);} $('navigation').append(group);}
 }
 function setGate(title,message,retry=false,loading=false){$('loading-art').hidden=!loading;$('auth-gate').classList.toggle('is-loading',loading);$('auth-gate').setAttribute('aria-busy',String(loading));$('auth-gate').hidden=false;$('gate-title').textContent=title;$('gate-message').textContent=message;$('retry-connection').hidden=!retry;}
 // Embedding is a shell presentation policy; server app permissions remain authoritative.
@@ -41,22 +44,27 @@ function renderSelected(){
    if(opensExternally(selected)){setGate('새 탭에서 연결되었습니다','열린 앱 탭에서 업무를 이어가세요.');}
    else $('auth-gate').hidden=true;
  }else if(state?.state==='error')setGate('앱에 연결하지 못했습니다',state.message,true);
- else setGate(opensExternally(selected)?'새 탭에서 이용하는 앱입니다':'로그인을 연결하고 있습니다…',opensExternally(selected)?'상단의 새 탭 열기로 같은 계정을 연결하세요.':'계정과 앱 사용 권한을 확인하고 있습니다.',false,!opensExternally(selected));
+ else setGate(opensExternally(selected)?'새 탭에서 이용하는 앱입니다':'로그인을 연결하고 있습니다…',opensExternally(selected)?'상단의 새 탭 열기로 같은 계정을 연결하세요.':(state?.message||'계정과 앱 사용 권한을 확인하고 있습니다.'),false,!opensExternally(selected));
+}
+function openInNewTab(id){
+ const entry=actor?.appEntries[id];if(!entry)return;const expectedActor=actor;
+ for(const item of popupConnections)if(item.target.closed){item.connection.stop();popupConnections.delete(item);}
+ const item=openAppTab({appId:id,entry:entry.url,brokerUrl,getIdToken:()=>{if(actor!==expectedActor)throw Error('로그인 계정이 변경되었습니다.');return hubAuth.getIdToken();},onState:state=>{if(actor!==expectedActor)return;clearTimeout(tabStatusTimer);if(state==='ready')tabStatusTimer=setTimeout(()=>{$('tab-status').textContent='';},5000);$('tab-status').textContent=state==='blocked'?'팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.':state==='ready'?'새 탭 로그인 연결 완료':state==='error'?'새 탭 연결에 실패했습니다. 해당 앱 메뉴에서 다시 시도해 주세요.':'새 탭에 연결하고 있습니다…';}});
+ if(item){popupConnections.add(item);$('tab-status').textContent='새 탭에 연결하고 있습니다…';}
 }
 function connectApp(id,external=false){
+ if(external){openInNewTab(id);return;}
  const app=apps.find(a=>a.id===id),entry=actor?.appEntries[id];if(!entry||!app)return;
  if(connections.has(id)){connections.get(id).stop();connections.delete(id);}
  if(frames.has(id)){frames.get(id).remove();frames.delete(id);}
- let target,frame;
- if(external){target=null;}
- else{frame=document.createElement('iframe');frame.title=app.name;frame.referrerPolicy='strict-origin-when-cross-origin';frame.hidden=true;$('frame-host').append(frame);frames.set(id,frame);target=frame.contentWindow;}
+ const frame=document.createElement('iframe');frame.title=app.name;frame.referrerPolicy='strict-origin-when-cross-origin';frame.hidden=true;$('frame-host').append(frame);frames.set(id,frame);const target=frame.contentWindow;
  connectionStates.set(id,{state:'pending'});
  const expectedActor=actor;
  const connection=createConnection({appId:id,entry:entry.url,target,brokerUrl,getIdToken:()=>{if(actor!==expectedActor)throw Error('로그인 계정이 변경되었습니다.');return hubAuth.getIdToken();},onState:(state,message)=>{
    if(actor!==expectedActor)return;connectionStates.set(id,{state,message});$('connection-state').textContent=state==='ready'?'인증 연결 완료':message||'인증 연결 중';if(selected===id)renderSelected();
  }});
  connections.set(id,connection);
- if(frame)frame.src=connection.url;else {target=window.open(connection.url,'_blank');if(!target){connection.stop();connections.delete(id);connectionStates.set(id,{state:'error',message:'팝업이 차단되었습니다. 브라우저에서 새 탭 열기를 허용해 주세요.'});}else connection.setTarget(target);}
+ frame.src=connection.url;
  renderSelected();
 }
 function selectApp(id,updateUrl=true){
@@ -85,7 +93,7 @@ async function loginFromHeader(event){
 }
 async function logoutHub(){
  if(authBusy)return;authBusy=true;$('logout').disabled=true;actor=null;noticeFeed.stop();closeNotice(false);
- const logoutResults=await Promise.all([...connections.values()].map(connection=>connection.logout().catch(()=>false)));connections.clear();
+ const logoutResults=await Promise.all([...connections.values(),...Array.from(popupConnections,x=>x.connection)].map(connection=>connection.logout().catch(()=>false)));connections.clear();popupConnections.clear();$('tab-status').textContent='';
  for(const frame of frames.values())frame.remove();frames.clear();connectionStates.clear();
  try{await hubAuth.logout();}finally{
   $('hub-login').hidden=false;$('user-strip').hidden=true;$('logout').disabled=false;$('auth-state').textContent='로그인';$('current-app').textContent='작업공간';$('external').hidden=true;$('reload').hidden=true;drawNavigation();setGate('로그아웃되었습니다',logoutResults.every(Boolean)?'상단에서 다시 로그인할 수 있습니다.':'허브 로그아웃은 완료했습니다. 연결이 끊긴 앱이나 별도로 연 탭의 로그아웃은 해당 앱에서 확인해 주세요.');authBusy=false;$('login-id').focus();
@@ -93,7 +101,7 @@ async function logoutHub(){
 }
 $('logout').onclick=logoutHub;
 $('external').onclick=event=>{if(actor){event.preventDefault();connectApp(selected,true);}};
-$('retry-connection').onclick=()=>actor?connectApp(selected,!!actor.appEntries[selected]?.external):bootAuthentication();
+$('retry-connection').onclick=()=>actor?connectApp(selected,opensExternally(selected)):bootAuthentication();
 function closeMenu(){document.body.classList.remove('menu-open');$('backdrop').hidden=true;$('open-menu').setAttribute('aria-expanded','false');$('topbar').inert=false;$('workspace').inert=false;$('sidebar').inert=mobile.matches;if(mobile.matches)$('open-menu').focus();}
 $('open-menu').onclick=()=>{closeNotice(false);closeHelp(false);document.body.classList.add('menu-open');$('backdrop').hidden=false;$('open-menu').setAttribute('aria-expanded','true');$('sidebar').inert=false;$('topbar').inert=true;$('workspace').inert=true;$('close-menu').focus();};
 $('close-menu').onclick=closeMenu;$('backdrop').onclick=closeMenu;
@@ -103,7 +111,7 @@ $('help').onclick=()=>{closeNotice(false);const open=$('help-panel').hidden;$('h
 $('close-help').onclick=()=>closeHelp();
 document.addEventListener('pointerdown',event=>{if(!$('help-panel').contains(event.target)&&!$('help').contains(event.target))closeHelp(false);});
 $('reload').onclick=()=>connectApp(selected);
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();closeHelp();closeNotice();if(document.body.classList.contains('menu-open'))closeMenu();}if(e.key==='Tab'&&document.body.classList.contains('menu-open')){const focusable=[$('close-menu'),...document.querySelectorAll('.nav-item')];const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();closeHelp();closeNotice();if(document.body.classList.contains('menu-open'))closeMenu();}if(e.key==='Tab'&&document.body.classList.contains('menu-open')){const focusable=[$('close-menu'),...Array.from(document.querySelectorAll('.nav-item,.nav-new-tab')).filter(el=>el.getClientRects().length)];const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
 mobile.addEventListener('change',()=>{closeMenu();hideTip();});$('navigation').addEventListener('scroll',hideTip);window.addEventListener('resize',hideTip);
 function tick(){const now=new Date();$('date').textContent=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'long',day:'numeric',weekday:'long'}).format(now);$('time').textContent=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(now);$('date').dateTime=now.toISOString();$('time').dateTime=now.toISOString();$('help-time').textContent=$('date').textContent+' · '+$('time').textContent+' (서울)';$('help-time').dateTime=now.toISOString();}tick();setInterval(tick,1000);
 $('sidebar').inert=mobile.matches;$('external').hidden=true;$('reload').hidden=true;$('current-app').textContent='작업공간';
@@ -133,3 +141,8 @@ $('password-close').onclick=()=>{if(!passwordBusy)$('password-dialog').close();}
 $('password-dialog').addEventListener('cancel',e=>{if(passwordBusy)e.preventDefault();});
 $('password-dialog').addEventListener('close',()=>{$('password-form').reset();});
 $('password-form').onsubmit=async e=>{e.preventDefault();if(passwordBusy)return;passwordBusy=true;$('password-submit').disabled=true;$('password-result').textContent='처리 중입니다…';try{if(!hubAuth)throw Error('인증 연결을 확인하고 다시 시도해 주세요.');if(passwordMode==='reset'){await hubAuth.resetPassword($('reset-email').value,$('reset-birth').value);$('password-result').textContent='입력한 정보가 일치하면 복구 이메일로 재설정 안내가 발송됩니다. 받은편지함과 스팸함을 확인해 주세요.';}else{if($('new-password').value!==$('confirm-password').value)throw Error('새 비밀번호가 서로 다릅니다.');await hubAuth.changePassword($('current-password').value,$('new-password').value);$('password-result').textContent='비밀번호가 변경되었습니다. 다음 로그인부터 새 비밀번호를 사용해 주세요.';}$('password-form').reset();$('password-submit').hidden=true;}catch(error){$('password-result').textContent=error.message;}finally{passwordBusy=false;$('password-submit').disabled=false;}};
+
+const warmedOrigins=new Set();
+function warmApp(id){const entry=actor?.appEntries[id];if(!entry)return;const origin=new URL(entry.url).origin;if(origin===location.origin||warmedOrigins.has(origin))return;warmedOrigins.add(origin);const link=document.createElement('link');link.rel='preconnect';link.href=origin;document.head.append(link);}
+$('navigation').addEventListener('pointerover',e=>{const id=e.target.closest('.nav-row')?.querySelector('[data-app]')?.dataset.app;if(id)warmApp(id);});
+$('navigation').addEventListener('focusin',e=>{const id=e.target.closest('.nav-row')?.querySelector('[data-app]')?.dataset.app;if(id)warmApp(id);});
