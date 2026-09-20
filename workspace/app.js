@@ -34,7 +34,7 @@ function drawNavigation(){
 }
 function setGate(title,message,retry=false,loading=false){$('loading-art').hidden=!loading;$('auth-gate').classList.toggle('is-loading',loading);$('auth-gate').setAttribute('aria-busy',String(loading));$('auth-gate').hidden=false;$('gate-title').textContent=title;$('gate-message').textContent=message;$('retry-connection').hidden=!retry;}
 // Embedding is a shell presentation policy; server app permissions remain authoritative.
-function opensExternally(id){return id!=='intranet'&&!!actor?.appEntries[id]?.external;}
+function opensExternally(id){return !['intranet','synchro'].includes(id)&&!!actor?.appEntries[id]?.external;}
 function renderSelected(){
  const app=apps.find(a=>a.id===selected);if(!app)return;
  const state=connectionStates.get(selected);
