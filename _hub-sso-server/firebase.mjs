@@ -19,8 +19,22 @@ export function firebaseBroker(hubOrigins){
   };
   identity.workers=async()=>{
     const result=await db.collection('users').where('role','in',['ADMIN','STAFF','COORDINATOR']).get();
-    const candidates=await Promise.all(result.docs.map(async doc=>{try{const [user,docs]=await Promise.all([auth.getUser(doc.id),identity.profile(doc.id)]);return user.disabled?null:{uid:doc.id,docs};}catch{return null;}}));
-    return candidates.filter(Boolean);
+    // Batch Auth and Firestore reads; reuse users already returned by the query.
+    const candidates=[];
+    for(let offset=0;offset<result.docs.length;offset+=100){
+      const batch=result.docs.slice(offset,offset+100);
+      const [accounts,profiles]=await Promise.all([
+        auth.getUsers(batch.map(doc=>({uid:doc.id}))),
+        db.getAll(...batch.flatMap(doc=>['userProfiles','userAppAccess'].map(c=>db.collection(c).doc(doc.id))))
+      ]);
+      const active=new Set(accounts.users.filter(user=>!user.disabled).map(user=>user.uid));
+      batch.forEach((doc,i)=>{if(active.has(doc.id))candidates.push({uid:doc.id,docs:[doc.data(),profiles[i*2].data()||{},profiles[i*2+1].data()||{}]});});
+    }
+    return candidates;
+  };
+  identity.positionIcons=async()=>{
+    const result=await db.collection('sharedIconAssets').where('targetType','==','STAFF_POSITION').get();
+    return Object.fromEntries(result.docs.map(doc=>doc.data()).filter(x=>x.status!=='DELETED'&&x.lookupKey?.startsWith('staff-position:')).map(x=>[x.lookupKey.slice(15),x.imageUrl||x.downloadURL||'']));
   };
   identity.auditSwitch=record=>db.collection('_hubWorkerSwitchAudit').add({...record,createdAt:new Date(record.at)});
   const tickets=db.collection('_hubSsoTickets');

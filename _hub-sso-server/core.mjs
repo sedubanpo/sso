@@ -46,8 +46,9 @@ export function createBroker({identity, store, registry=APPS, hubOrigins, now=Da
       if(method!=='POST'||!await maySwitch())throw new HttpError(403,'이 계정은 근무자 계정을 선택할 수 없습니다.');
       if(path==='/workers'){
         const workers=[];
-        for(const candidate of await identity.workers()){
-          try{const target=authorizeProfile(candidate.uid,...candidate.docs,registry);if(target.role==='staff')workers.push({uid:target.uid,name:target.name});}catch{}
+        const [candidates,icons]=await Promise.all([identity.workers(),identity.positionIcons?.().catch(()=>({}))||{}]);
+        for(const candidate of candidates){
+          try{const target=authorizeProfile(candidate.uid,...candidate.docs,registry);if(target.role==='staff'){const position=String(candidate.docs[0]?.staffPosition||candidate.docs[1]?.staffPosition||'').slice(0,40);const icon=icons[position];workers.push({uid:target.uid,name:target.name,position,iconUrl:typeof icon==='string'&&/^https:\/\//.test(icon)?icon:''});}}catch{}
         }
         return {workers,operator:{uid:actor.uid,name:actor.name}};
       }

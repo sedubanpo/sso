@@ -28,7 +28,7 @@ async function loadFirebase(name='sedu-hub'){
   },resetPassword:email=>sdk.sendPasswordResetEmail(auth,email),changePassword:async(current,next)=>{const user=auth.currentUser;if(!user?.email)throw Error('다시 로그인해 주세요.');await sdk.reauthenticateWithCredential(user,sdk.EmailAuthProvider.credential(user.email,current));await sdk.updatePassword(user,next);},logout:()=>sdk.signOut(auth),get user(){return auth.currentUser;}};
 }
 export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northeast3-fir-lms-prod.cloudfunctions.net/hubRecoveryApi',sdkFactory=loadFirebase}){
-  let sdk=null,workerSdk=null,usingWorker=false,actor=null,generation=0;
+  let sdk=null,workerSdk=null,usingWorker=false,actor=null,generation=0,roster=null;
   async function request(path,body){
     const user=sdk?.user;if(!user)throw Error('상단에서 로그인해 주세요.');
     const token=await user.getIdToken();
@@ -39,7 +39,7 @@ export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northea
     async available(){try{const r=await fetch(brokerUrl+'/health',{signal:AbortSignal.timeout(5000)});return r.ok&&(await r.json()).ready===true;}catch{return false;}},
     async login(identifier,password){
       const id=normalizeIdentifier(identifier);if(!password)throw Error('비밀번호를 입력해 주세요.');
-      const version=++generation;
+      const version=++generation;roster=null;
       try{
         if(!sdk)sdk=await sdkFactory();
         if(version!==generation)return null;
@@ -54,7 +54,7 @@ export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northea
         throw error;
       }
     },
-    async workers(){return request('/workers',{});},
+    async workers(refresh=false){if(!sdk?.user)throw Error('상단에서 로그인해 주세요.');if(roster&&!refresh)return roster;const version=generation;const result=await request('/workers',{});if(version!==generation)throw Error('다시 로그인해 주세요.');roster=result;return result;},
     async switchWorker(uid){
       const result=await request('/switch-worker',{uid});
       if(!workerSdk)workerSdk=await sdkFactory('sedu-hub-worker');
@@ -82,6 +82,6 @@ export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northea
       }
     },
     async getIdToken(){if(!sdk?.user||!actor)throw Error('로그인이 만료되었습니다. 다시 로그인해 주세요.');return (usingWorker?workerSdk:sdk).user.getIdToken();},
-    async logout(){generation++;actor=null;usingWorker=false;await workerSdk?.logout();await sdk?.logout();}
+    async logout(){generation++;roster=null;actor=null;usingWorker=false;await workerSdk?.logout();await sdk?.logout();}
   };
 }

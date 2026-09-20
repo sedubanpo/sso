@@ -1,6 +1,6 @@
 import {openAppTab} from './auth/new-tab.mjs?v=20260920';
 import {createNoticeFeed} from './auth/notices.mjs';
-import {createHubAuth} from './auth/hub-auth.mjs?v=20260920-workers';
+import {createHubAuth} from './auth/hub-auth.mjs?v=20260920-roster';
 import {createConnection} from './auth/connection.mjs?v=20260920';
 'use strict';
 const apps = [
@@ -149,27 +149,51 @@ function warmApp(id){const entry=actor?.appEntries[id];if(!entry)return;const or
 $('navigation').addEventListener('pointerover',e=>{const id=e.target.closest('.nav-row')?.querySelector('[data-app]')?.dataset.app;if(id)warmApp(id);});
 $('navigation').addEventListener('focusin',e=>{const id=e.target.closest('.nav-row')?.querySelector('[data-app]')?.dataset.app;if(id)warmApp(id);});
 
+const workerPositions=['대표','원장','부원장','센터장','실장','과장','대리','주임','사원'];
 let workerBusy=false,workerRequired=false;
-async function showWorkers(required=false){
- if(workerBusy)return;workerBusy=true;$('worker-cancel').disabled=true;
- workerRequired=required;$('worker-result').textContent='근무자 목록을 불러오고 있습니다…';$('worker-submit').disabled=true;$('worker-cancel').textContent=required?'로그아웃':'취소';
- $('worker-select').replaceChildren(new Option('근무자를 선택해 주세요',''));
- $('worker-dialog').showModal();
- try{const {workers}=await hubAuth.workers();for(const person of workers.sort((a,b)=>a.name.localeCompare(b.name,'ko')))$('worker-select').add(new Option(person.name,person.uid));$('worker-select').value=actor?.uid||'';$('worker-result').textContent=workers.length?'':'선택할 수 있는 활성 근무자가 없습니다.';$('worker-submit').disabled=!workers.length;}catch(error){$('worker-result').textContent=error.message;}finally{workerBusy=false;$('worker-cancel').disabled=false;}
+function renderWorkers(workers){
+ const roster=$('worker-roster');roster.replaceChildren();
+ const groups=new Map();for(const person of workers){const key=person.position||'직급 미지정';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(person);}
+ const rank=p=>workerPositions.includes(p)?workerPositions.indexOf(p):99;
+ for(const [position,people] of [...groups].sort(([a],[b])=>rank(a)-rank(b)||a.localeCompare(b,'ko'))){
+  const section=document.createElement('section');section.className='worker-group';
+  const title=document.createElement('h3');title.textContent=position;const count=document.createElement('span');count.textContent=people.length+'명';title.append(count);section.append(title);
+  const grid=document.createElement('div');grid.className='worker-grid';
+  for(const person of people.sort((a,b)=>a.name.localeCompare(b.name,'ko'))){
+   const button=document.createElement('button');button.type='button';button.className='worker-card';button.setAttribute('aria-label',person.name+' · '+position+' 계정으로 시작');
+   const badge=document.createElement('span');badge.className='worker-badge';badge.dataset.rank=String(Math.min(rank(position),8)%3);badge.setAttribute('aria-hidden','true');
+   badge.innerHTML='<svg viewBox="0 0 40 40" fill="none"><path d="M9 13l6 5 5-9 5 9 6-5-3 16H12L9 13Z" fill="currentColor" opacity=".2"/><path d="M9 13l6 5 5-9 5 9 6-5-3 16H12L9 13ZM14 33h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+   if(person.iconUrl){const img=document.createElement('img');img.src=person.iconUrl;img.alt='';img.referrerPolicy='no-referrer';img.onload=()=>badge.replaceChildren(img);}
+   const name=document.createElement('strong');name.textContent=person.name;
+   const hint=document.createElement('span');hint.className='worker-card-hint';hint.textContent=person.uid===actor?.uid?'현재 이용 중':'선택하여 시작 →';
+   button.append(badge,name,hint);button.onclick=()=>selectWorker(person,button);grid.append(button);
+  }section.append(grid);roster.append(section);
+ }
+}
+async function showWorkers(required=false,refresh=false){
+ if(workerBusy)return;workerBusy=true;workerRequired=required;
+ $('worker-cancel').disabled=true;$('worker-refresh').disabled=true;$('worker-cancel').textContent=required?'로그아웃':'취소';
+ $('worker-result').textContent='근무자 목록을 불러오고 있습니다…';$('worker-roster').setAttribute('aria-busy','true');
+ $('worker-roster').innerHTML='<div class="worker-skeleton" aria-hidden="true">'+Array(6).fill('<span></span>').join('')+'</div>';
+ if(!$('worker-dialog').open)$('worker-dialog').showModal();
+ try{const {workers}=await hubAuth.workers(refresh);renderWorkers(workers);$('worker-result').textContent=workers.length?'':'선택할 수 있는 활성 근무자가 없습니다.';}
+ catch(error){$('worker-roster').replaceChildren();$('worker-result').textContent=error.message;}
+ finally{workerBusy=false;$('worker-cancel').disabled=false;$('worker-refresh').disabled=false;$('worker-roster').setAttribute('aria-busy','false');($('worker-roster').querySelector('button')||$('worker-refresh')).focus();}
 }
 $('choose-worker').onclick=()=>showWorkers(!actor);
+$('worker-refresh').onclick=()=>showWorkers(workerRequired,true);
 $('worker-cancel').onclick=async()=>{if(workerBusy)return;$('worker-dialog').close();if(workerRequired)await logoutHub();};
 $('worker-dialog').addEventListener('cancel',e=>{e.preventDefault();if(!workerBusy)$('worker-cancel').click();});
-$('worker-form').onsubmit=async event=>{
- event.preventDefault();if(workerBusy||!$('worker-select').value)return;
- workerBusy=true;$('worker-submit').disabled=true;$('worker-cancel').disabled=true;$('worker-select').disabled=true;$('worker-result').textContent='기존 앱 연결을 정리하고 계정을 전환하고 있습니다…';
+async function selectWorker(person,button){
+ if(workerBusy)return;workerBusy=true;button.classList.add('is-connecting');button.querySelector('.worker-card-hint').textContent='연결하고 있습니다…';
+ $('worker-dialog').querySelectorAll('button').forEach(b=>b.disabled=true);$('worker-result').textContent=person.name+' 계정으로 연결하고 있습니다…';
  try{
   noticeFeed.stop();closeNotice(false);
   const results=await Promise.all([...connections.values(),...Array.from(popupConnections).filter(x=>!x.target.closed).map(x=>x.connection)].map(c=>c.logout().catch(()=>false)));
   connections.clear();if(results.every(Boolean))popupConnections.clear();else for(const item of popupConnections)if(item.target.closed)popupConnections.delete(item);for(const frame of frames.values())frame.remove();frames.clear();connectionStates.clear();actor=null;drawNavigation();
   if(results.some(x=>!x))throw Error('일부 앱의 로그아웃을 확인하지 못했습니다. 별도로 열린 앱 탭을 닫은 뒤 다시 선택해 주세요.');
-  actor=await hubAuth.switchWorker($('worker-select').value);role=actor.role;$('user-name').textContent=actor.name;$('change-password').hidden=true;
+  actor=await hubAuth.switchWorker(person.uid);role=actor.role;$('user-name').textContent=actor.name;$('change-password').hidden=true;
   workerRequired=false;$('worker-dialog').close();noticeFeed.start();drawNavigation();selectApp(new URLSearchParams(location.search).get('app'));
  }catch(error){workerRequired=true;$('worker-cancel').textContent='로그아웃';$('worker-result').textContent=error.message;setGate('근무자 계정 선택이 필요합니다','계정 연결을 완료한 뒤 앱을 이용할 수 있습니다.');}
- finally{workerBusy=false;$('worker-submit').disabled=false;$('worker-cancel').disabled=false;$('worker-select').disabled=false;}
-};
+ finally{workerBusy=false;$('worker-dialog').querySelectorAll('button').forEach(b=>b.disabled=false);button.classList.remove('is-connecting');button.querySelector('.worker-card-hint').textContent='선택하여 시작 →';if($('worker-dialog').open)button.focus();}
+}
