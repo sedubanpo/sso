@@ -30,9 +30,8 @@ export function createBroker({identity, store, registry=APPS, hubOrigins, now=Da
       if(origin!==new URL(registry[body.appId].url).origin)throw new HttpError(403,'허용되지 않은 앱 주소입니다.');
       const ticket=await store.consume(hash(body.code), record=>record&&record.appId===body.appId&&record.nonce===body.nonce&&record.challenge===hash(body.verifier)&&record.origin===origin&&record.expiresAt>now());
       if(!ticket)throw new HttpError(401,'연결이 만료되었거나 이미 사용되었습니다. 앱을 다시 열어 주세요.');
-      const user=await identity.user(ticket.uid);
+      const [user,docs]=await Promise.all([identity.user(ticket.uid),identity.profile(ticket.uid)]);
       if(user.disabled||Date.parse(user.tokensValidAfterTime||'1970-01-01')>ticket.authTime*1000)throw new HttpError(401,'로그인이 해제되었습니다. 다시 로그인해 주세요.');
-      const docs=await identity.profile(ticket.uid);
       if(!authorizeProfile(ticket.uid,...docs,registry).apps.includes(ticket.appId))throw new HttpError(403,'이 앱의 사용 권한이 없습니다.');
       return {customToken:await identity.mint(ticket.uid),uid:ticket.uid};
     }

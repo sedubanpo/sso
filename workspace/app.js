@@ -1,5 +1,6 @@
 import {openAppTab} from './auth/new-tab.mjs?v=20260920';
-import {createNoticeFeed} from './auth/notices.mjs';
+import {createNoticeFeed} from './auth/notices.mjs?v=20260930';
+import {visibleWorkers,menuVisible} from './auth/presentation.mjs?v=20260930';
 import {createHubAuth} from './auth/hub-auth.mjs?v=20260920-roster';
 import {createConnection} from './auth/connection.mjs?v=20260920';
 'use strict';
@@ -30,7 +31,7 @@ function showTip(button,app){if(document.body.classList.contains('expanded')||mo
 function drawNavigation(){
  $('navigation').replaceChildren();if(!actor)return;
  for(const staff of [false,true]){if(staff&&role==='teacher')continue;const group=document.createElement('section');group.className='nav-group';group.setAttribute('aria-label',staff?'실무자 운영':'수업 운영');group.innerHTML=`<h2 class="group-label">${staff?'실무자 운영':'수업 운영'}</h2>`;
- for(const app of apps.filter(a=>!!a.staff===staff&&actor?.apps.includes(a.id))){const button=document.createElement('button');button.className='nav-item';button.dataset.app=app.id;button.setAttribute('aria-label',`${app.name}, ${app.description}`);button.innerHTML=icon(app.icon)+`<span class="nav-copy"><strong>${app.name}</strong><small>${app.description}</small></span>`;button.addEventListener('click',()=>{selectApp(app.id);if(mobile.matches)closeMenu();});button.addEventListener('mouseenter',()=>showTip(button,app));button.addEventListener('mouseleave',()=>{tooltipTimer=setTimeout(hideTip,150);});button.addEventListener('focus',()=>showTip(button,app));button.addEventListener('blur',hideTip);const row=document.createElement('div');row.className='nav-row';const open=document.createElement('button');open.className='nav-new-tab';open.type='button';open.setAttribute('aria-label',app.name+' 새 탭에서 열기');open.title=app.name+' 새 탭에서 열기';open.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7m0-7L10 14M10 4H4v16h16v-6"/></svg>';open.onclick=()=>openInNewTab(app.id);row.append(button,open);group.append(row);} $('navigation').append(group);}
+ for(const app of apps.filter(a=>menuVisible(a)&&!!a.staff===staff&&actor?.apps.includes(a.id))){const button=document.createElement('button');button.className='nav-item';button.dataset.app=app.id;button.setAttribute('aria-label',`${app.name}, ${app.description}`);button.innerHTML=icon(app.icon)+`<span class="nav-copy"><strong>${app.name}</strong><small>${app.description}</small></span>`;button.addEventListener('click',()=>{selectApp(app.id);if(mobile.matches)closeMenu();});button.addEventListener('mouseenter',()=>showTip(button,app));button.addEventListener('mouseleave',()=>{tooltipTimer=setTimeout(hideTip,150);});button.addEventListener('focus',()=>showTip(button,app));button.addEventListener('blur',hideTip);const row=document.createElement('div');row.className='nav-row';const open=document.createElement('button');open.className='nav-new-tab';open.type='button';open.setAttribute('aria-label',app.name+' 새 탭에서 열기');open.title=app.name+' 새 탭에서 열기';open.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7m0-7L10 14M10 4H4v16h16v-6"/></svg>';open.onclick=()=>openInNewTab(app.id);row.append(button,open);group.append(row);} $('navigation').append(group);}
 }
 function setGate(title,message,retry=false,loading=false){$('loading-art').hidden=!loading;$('auth-gate').classList.toggle('is-loading',loading);$('auth-gate').setAttribute('aria-busy',String(loading));$('auth-gate').hidden=false;$('gate-title').textContent=title;$('gate-message').textContent=message;$('retry-connection').hidden=!retry;}
 // Embedding is a shell presentation policy; server app permissions remain authoritative.
@@ -69,7 +70,7 @@ function connectApp(id,external=false){
 }
 function selectApp(id,updateUrl=true){
  if(!actor)return;
- const app=apps.find(a=>a.id===id&&actor.apps.includes(a.id))||apps.find(a=>actor.apps.includes(a.id));
+ const app=apps.find(a=>a.id===id&&actor.apps.includes(a.id))||apps.find(a=>menuVisible(a)&&actor.apps.includes(a.id));
  if(!app){setGate('사용할 수 있는 앱이 없습니다','관리자에게 앱 사용 권한을 확인해 주세요.');return;}
  $('external').hidden=false;selected=app.id;$('loading-icon').innerHTML=icon(app.icon);clearTimeout(timer);hideTip();closeHelp(false);
  document.querySelectorAll('.nav-item').forEach(b=>{if(b.dataset.app===selected)b.setAttribute('aria-current','page');else b.removeAttribute('aria-current');});
@@ -132,8 +133,9 @@ $('notice-close').onclick=()=>closeNotice();
 $('notice-refresh').onclick=()=>noticeFeed.refresh();
 $('notice-lms').onclick=()=>{closeNotice(false);selectApp('lms');};
 document.addEventListener('pointerdown',e=>{if(!$('notice-panel').contains(e.target)&&!$('notice-trigger').contains(e.target))closeNotice(false);});
-const noticeFeed=createNoticeFeed({getToken:()=>hubAuth.getIdToken(),url:window.SEDU_HUB_CONFIG?.noticeUrl,onChange(state){
- $('notice-summary').textContent=state.summary;$('notice-content').textContent=state.content;$('notice-meta').textContent=state.meta||'';$('notice-status').textContent=state.status||'';$('notice-refresh').hidden=!actor;$('notice-refresh').disabled=state.loading||false;$('notice-lms').hidden=!actor?.apps.includes('lms');
+$('notice-prev').onclick=()=>noticeFeed.previous();$('notice-next').onclick=()=>noticeFeed.next();$('notice-pause').onclick=()=>noticeFeed.togglePaused();
+const noticeFeed=createNoticeFeed({shouldPause:()=>document.hidden||!$('notice-panel').hidden||$('notice-trigger').matches(':hover,:focus-within'),getToken:()=>hubAuth.getIdToken(),url:window.SEDU_HUB_CONFIG?.noticeUrl,onChange(state){
+ $('notice-summary').textContent=state.summary;$('notice-count').textContent=state.count>1?`${state.index+1}/${state.count}`:'';$('notice-controls').hidden=!(state.count>1);$('notice-position').textContent=state.count>1?`${state.index+1} / ${state.count}`:'';$('notice-pause').textContent=state.paused?'자동 전환 재개':'자동 전환 멈춤';$('notice-pause').setAttribute('aria-pressed',String(!!state.paused));$('notice-content').textContent=state.content;$('notice-meta').textContent=state.meta||'';$('notice-status').textContent=state.status||'';$('notice-refresh').hidden=!actor;$('notice-refresh').disabled=state.loading||false;$('notice-lms').hidden=!actor?.apps.includes('lms');
 }});
 
 let passwordMode='reset',passwordBusy=false;
@@ -153,19 +155,20 @@ const workerPositions=['대표','원장','부원장','센터장','실장','과�
 let workerBusy=false,workerRequired=false;
 function renderWorkers(workers){
  const roster=$('worker-roster');roster.replaceChildren();
- const groups=new Map();for(const person of workers){const key=person.position||'직급 미지정';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(person);}
+ const groups=new Map();for(const person of visibleWorkers(workers)){const key=person.position||'직급 미지정';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(person);}
  const rank=p=>workerPositions.includes(p)?workerPositions.indexOf(p):99;
  for(const [position,people] of [...groups].sort(([a],[b])=>rank(a)-rank(b)||a.localeCompare(b,'ko'))){
-  const section=document.createElement('section');section.className='worker-group';
+  const section=document.createElement('section');section.className='worker-group';if(position==='공용 계정')section.classList.add('worker-shared');
   const title=document.createElement('h3');title.textContent=position;const count=document.createElement('span');count.textContent=people.length+'명';title.append(count);section.append(title);
   const grid=document.createElement('div');grid.className='worker-grid';
   for(const person of people.sort((a,b)=>a.name.localeCompare(b.name,'ko'))){
-   const button=document.createElement('button');button.type='button';button.className='worker-card';button.setAttribute('aria-label',person.name+' · '+position+' 계정으로 시작');
+   const button=document.createElement('button');button.type='button';button.className='worker-card';if(person.uid===actor?.uid){button.classList.add('is-current');button.setAttribute('aria-current','true');}button.setAttribute('aria-label',person.name+' · '+position+(position==='공용 계정'?'으로 시작':' 계정으로 시작'));
    const badge=document.createElement('span');badge.className='worker-badge';badge.dataset.rank=String(Math.min(rank(position),8)%3);badge.setAttribute('aria-hidden','true');
    badge.innerHTML='<svg viewBox="0 0 40 40" fill="none"><path d="M9 13l6 5 5-9 5 9 6-5-3 16H12L9 13Z" fill="currentColor" opacity=".2"/><path d="M9 13l6 5 5-9 5 9 6-5-3 16H12L9 13ZM14 33h12" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
-   if(person.iconUrl){const img=document.createElement('img');img.src=person.iconUrl;img.alt='';img.referrerPolicy='no-referrer';img.onload=()=>badge.replaceChildren(img);}
+   if(position==='공용 계정')badge.innerHTML=icon('users');
+   if(person.iconUrl&&position!=='공용 계정'){const img=document.createElement('img');img.src=person.iconUrl;img.alt='';img.referrerPolicy='no-referrer';img.onload=()=>badge.replaceChildren(img);}
    const name=document.createElement('strong');name.textContent=person.name;
-   const hint=document.createElement('span');hint.className='worker-card-hint';hint.textContent=person.uid===actor?.uid?'현재 이용 중':'선택하여 시작 →';
+   const hint=document.createElement('span');hint.className='worker-card-hint';hint.textContent=person.uid===actor?.uid?'현재 이용 중':position==='공용 계정'?'공용으로 시작':'선택하여 시작';
    button.append(badge,name,hint);button.onclick=()=>selectWorker(person,button);grid.append(button);
   }section.append(grid);roster.append(section);
  }
@@ -176,7 +179,7 @@ async function showWorkers(required=false,refresh=false){
  $('worker-result').textContent='근무자 목록을 불러오고 있습니다…';$('worker-roster').setAttribute('aria-busy','true');
  $('worker-roster').innerHTML='<div class="worker-skeleton" aria-hidden="true">'+Array(6).fill('<span></span>').join('')+'</div>';
  if(!$('worker-dialog').open)$('worker-dialog').showModal();
- try{const {workers}=await hubAuth.workers(refresh);renderWorkers(workers);$('worker-result').textContent=workers.length?'':'선택할 수 있는 활성 근무자가 없습니다.';}
+ try{const {workers}=await hubAuth.workers(refresh);renderWorkers(workers);$('worker-result').textContent=visibleWorkers(workers).length?'':'선택할 수 있는 활성 근무자가 없습니다.';}
  catch(error){$('worker-roster').replaceChildren();$('worker-result').textContent=error.message;}
  finally{workerBusy=false;$('worker-cancel').disabled=false;$('worker-refresh').disabled=false;$('worker-roster').setAttribute('aria-busy','false');($('worker-roster').querySelector('button')||$('worker-refresh')).focus();}
 }
@@ -195,5 +198,5 @@ async function selectWorker(person,button){
   actor=await hubAuth.switchWorker(person.uid);role=actor.role;$('user-name').textContent=actor.name;$('change-password').hidden=true;
   workerRequired=false;$('worker-dialog').close();noticeFeed.start();drawNavigation();selectApp(new URLSearchParams(location.search).get('app'));
  }catch(error){workerRequired=true;$('worker-cancel').textContent='로그아웃';$('worker-result').textContent=error.message;setGate('근무자 계정 선택이 필요합니다','계정 연결을 완료한 뒤 앱을 이용할 수 있습니다.');}
- finally{workerBusy=false;$('worker-dialog').querySelectorAll('button').forEach(b=>b.disabled=false);button.classList.remove('is-connecting');button.querySelector('.worker-card-hint').textContent='선택하여 시작 →';if($('worker-dialog').open)button.focus();}
+ finally{workerBusy=false;$('worker-dialog').querySelectorAll('button').forEach(b=>b.disabled=false);button.classList.remove('is-connecting');button.querySelector('.worker-card-hint').textContent=person.position==='공용 계정'?'공용으로 시작':'선택하여 시작';if($('worker-dialog').open)button.focus();}
 }
