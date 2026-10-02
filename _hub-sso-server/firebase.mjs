@@ -3,6 +3,7 @@ import {getAuth} from 'firebase-admin/auth';
 import {getFirestore} from 'firebase-admin/firestore';
 import {createHash} from 'node:crypto';
 import {createBroker} from './core.mjs';
+import {createInboxStore} from './inbox.mjs';
 import {APPS} from './registry.mjs';
 // Use managed service identity in a deployed runtime. No secret/key file is bundled or read by this project.
 export function firebaseBroker(hubOrigins){
@@ -11,6 +12,7 @@ export function firebaseBroker(hubOrigins){
     const snapshots=await db.getAll(...['users','userProfiles','userAppAccess'].map(c=>db.collection(c).doc(uid)));
     return snapshots.map(s=>s.exists?s.data():{});
   }};
+  identity.inbox=createInboxStore(db);
   identity.isOperator=async uid=>{
     const aliasId=createHash('sha256').update('01042327428').digest('hex');
     const [alias,user]=await Promise.all([db.collection('loginAliases').doc(aliasId).get(),auth.getUser(uid)]);

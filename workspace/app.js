@@ -1,9 +1,9 @@
 import {installLeaveGuard} from './auth/leave-guard.mjs';
 import {openAppTab} from './auth/new-tab.mjs?v=20260920';
 import {createNoticeFeed} from './auth/notices.mjs?v=20260930';
-import {createActivityFeed,activityKinds,decidePermission} from './auth/activity.mjs?v=20261003-staff-inbox';
-import {visibleWorkers,menuVisible,availableApps,introGroups} from './auth/presentation.mjs?v=20261003-staff-inbox';
-import {createHubAuth} from './auth/hub-auth.mjs?v=20261003-staff-inbox';
+import {createActivityFeed,activityKinds,decidePermission,createInboxClient} from './auth/activity.mjs?v=20261003-inbox-history';
+import {visibleWorkers,menuVisible,availableApps,introGroups} from './auth/presentation.mjs?v=20261003-inbox-history';
+import {createHubAuth} from './auth/hub-auth.mjs?v=20261003-inbox-history';
 import {createConnection} from './auth/connection.mjs?v=20260920';
 'use strict';
 installLeaveGuard();
@@ -240,7 +240,7 @@ const activitySources=window.SEDU_HUB_CONFIG?.activitySources||[
 ];
 let permissionBusy=false;
 let activityView={items:[],sources:[],loading:false},activityFilter='all';
-const activityFeed=createActivityFeed({getActor:()=>actor,getToken:()=>hubAuth.getIdToken(),sources:activitySources,onChange:state=>{activityView=state;renderActivity();}});
+const activityFeed=createActivityFeed({getActor:()=>actor,getToken:()=>hubAuth.getIdToken(),sources:activitySources,inbox:createInboxClient((window.SEDU_HUB_CONFIG?.brokerUrl||'')+'/inbox'),onChange:state=>{activityView=state;renderActivity();}});
 function closeActivity(focus=true){const opened=!$('activity-panel').hidden;$('activity-panel').hidden=true;$('activity-trigger').setAttribute('aria-expanded','false');if(opened&&focus)$('activity-trigger').focus();}
 function renderActivity(){
  const {items,sources,loading}=activityView,unread=items.filter(i=>!i.read).length;
@@ -250,7 +250,10 @@ function renderActivity(){
  const incomplete=sources.some(s=>s.state==='error'||s.state==='partial');
  $('activity-status').textContent=loading?'앱별 알림을 확인하고 있습니다…':incomplete?'일부 알림을 확인하지 못했습니다. 앱별 연결 상태를 확인해 주세요.':items.length?'최근 알림 '+items.length+'건':'새로운 업무 알림이 없습니다.';
  $('activity-list').replaceChildren();
- const visible=items.filter(i=>activityFilter==='all'||(activityFilter==='request'?i.request:!i.request));
+ const historical=['archive','timeline'].includes(activityFilter);
+ const visible=activityFilter==='timeline'?(activityView.history||[]):activityFilter==='archive'?(activityView.archived||[]):items.filter(i=>activityFilter==='hours'?i.kind==='hours-issue':i.kind!=='hours-issue'&&(activityFilter==='all'||(activityFilter==='request'?i.request:!i.request)));
+ $('activity-status').textContent=loading?'앱별 알림을 확인하고 있습니다…':incomplete?'일부 알림을 확인하지 못했습니다. 앱별 연결 상태를 확인해 주세요.':visible.length?'알림 '+visible.length+'건':'표시할 알림이 없습니다.';
+ $('activity-more').hidden=activityFilter!=='timeline'||!activityView.nextCursor;
  for(const item of visible){
   const button=document.createElement('button');button.type='button';button.className='activity-item'+(item.read?' is-read':'');
   const meta=document.createElement('span');meta.className='activity-item-meta';meta.textContent=activityKinds[item.kind].label+' · '+new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(item.createdAt));
@@ -258,8 +261,20 @@ function renderActivity(){
   const summary=document.createElement('span');summary.className='activity-item-summary';summary.textContent=item.summary;
   const action=document.createElement('span');action.className='activity-item-action';action.textContent=(apps.find(a=>a.id===item.appId)?.name||'앱')+'에서 확인 →';
   button.append(meta,title,summary,action);button.onclick=()=>{activityFeed.markRead(item.id);closeActivity(false);selectApp(item.appId);$('current-app').focus();};
-  const row=document.createElement('div');row.className='activity-row';row.append(button);
-  if(item.kind==='permission-request'&&item.actionId&&actor?.role==='staff'){
+  const row=document.createElement('div');row.className='activity-row';
+  if(historical){
+   button.replaceChildren(summary,action);
+   const details=document.createElement('details');details.className='activity-history-entry';
+   const heading=document.createElement('summary'),label=document.createElement('strong'),caption=document.createElement('span');label.textContent=item.title;caption.textContent=meta.textContent+' · '+({archived:'보관됨',deleted:'삭제됨',active:'수신됨'}[item.state]||'수신됨');
+   const arrow=document.createElement('span');arrow.className='history-chevron';arrow.setAttribute('aria-hidden','true');arrow.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m6 9 6 6 6-6"/></svg>';
+   heading.append(label,caption,arrow);details.append(heading,button);row.append(details);
+  }else row.append(button);
+  const tools=document.createElement('div');tools.className='activity-item-tools';
+  for(const [state,label,path] of item.state==='deleted'?[['active','목록으로 복원','M4 10h11a5 5 0 0 1 0 10M4 10l5-5M4 10l5 5']]:item.state==='archived'?[['active','목록으로 복원','M4 10h11a5 5 0 0 1 0 10M4 10l5-5M4 10l5 5'],['deleted','목록에서 삭제','M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7']]:[['archived','보관','M4 4h16v4H4zM6 8v12h12V8M10 12h4'],['deleted','목록에서 삭제','M4 6h16M9 6V3h6v3M6 6l1 15h10l1-15M10 10v7M14 10v7']]){
+   const tool=document.createElement('button');tool.type='button';tool.className='icon-button';tool.title=label;tool.setAttribute('aria-label',item.title+' '+label);tool.disabled=!item.key;tool.innerHTML='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="'+path+'"/></svg>';
+   tool.onclick=async()=>{const selected=actor;tools.querySelectorAll('button').forEach(b=>b.disabled=true);$('activity-message').textContent='';try{await activityFeed.setState(item,state);if(actor===selected){$('activity-message').textContent=label+'했습니다.';document.querySelector('[data-activity-filter="'+activityFilter+'"]').focus();}}catch(error){if(actor===selected){$('activity-message').textContent=error.message;tools.querySelectorAll('button').forEach(b=>b.disabled=false);}}};tools.append(tool);
+  }row.append(tools);
+  if(!historical&&item.kind==='permission-request'&&item.actionId&&actor?.role==='staff'){
    const controls=document.createElement('div');controls.className='activity-decisions';
    const result=document.createElement('p');result.className='activity-decision-result';result.setAttribute('role','status');
    for(const [status,label] of [['APPROVED','승인'],['REJECTED','거절']]){const choice=document.createElement('button');choice.type='button';choice.className='button';choice.textContent=label;choice.disabled=permissionBusy;choice.setAttribute('aria-label',item.title+' '+label);choice.onclick=async()=>{
@@ -276,6 +291,7 @@ function renderActivity(){
  $('activity-refresh').disabled=loading;$('activity-read').disabled=!unread;
 }
 $('activity-trigger').onclick=()=>{const open=$('activity-panel').hidden;closeHelp(false);closeNotice(false);$('activity-panel').hidden=!open;$('activity-trigger').setAttribute('aria-expanded',String(open));if(open){renderActivity();$('activity-close').focus();}};
+$('activity-more').onclick=async()=>{$('activity-more').disabled=true;try{await activityFeed.loadMore();}catch(error){$('activity-message').textContent=error.message;}finally{$('activity-more').disabled=false;}};
 $('activity-close').onclick=()=>closeActivity();$('activity-refresh').onclick=()=>activityFeed.refresh();$('activity-read').onclick=()=>activityFeed.markAllRead();
-for(const button of document.querySelectorAll('[data-activity-filter]'))button.onclick=()=>{activityFilter=button.dataset.activityFilter;document.querySelectorAll('[data-activity-filter]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));renderActivity();};
+for(const button of document.querySelectorAll('[data-activity-filter]'))button.onclick=()=>{activityFilter=button.dataset.activityFilter;$('activity-message').textContent='';document.querySelectorAll('[data-activity-filter]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));renderActivity();};
 document.addEventListener('pointerdown',e=>{if(!$('activity-panel').contains(e.target)&&!$('activity-trigger').contains(e.target))closeActivity(false);});

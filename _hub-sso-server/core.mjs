@@ -59,6 +59,7 @@ export function createBroker({identity, store, registry=APPS, hubOrigins, now=Da
       await identity.auditSwitch({operatorUid:decoded.uid,targetUid:target.uid,mode:teacherMode?'teacher-test':'worker',at:now()});
       return {actor:{...present(target),canSwitchTeacher:target.uid===decoded.uid},customToken:await identity.mint(target.uid)};
     }
+    if(path==='/inbox'){if(!identity.inbox)throw new HttpError(503,'알림 저장소를 준비하고 있습니다.');return identity.inbox(actor,body);}
     if(path==='/ticket') {
       if(!actor.apps.includes(body.appId))throw new HttpError(403,'이 앱의 사용 권한이 없습니다.');
       if(!tokenPattern.test(body.challenge||'')||!tokenPattern.test(body.nonce||''))throw new HttpError(400,'연결 요청 형식이 올바르지 않습니다.');
