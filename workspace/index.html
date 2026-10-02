@@ -3,13 +3,13 @@
 <head>
   <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#2456b8"><title>에스에듀 허브</title>
-  <link rel="preconnect" href="https://www.gstatic.com" crossorigin><link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js"><link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js"><link rel="preconnect" href="https://asia-northeast3-fir-lms-prod.cloudfunctions.net" crossorigin><link rel="icon" href="assets/hub-mark.svg"><link rel="stylesheet" href="styles.css?v=20260930-hub"><script src="runtime-config.js" defer></script><script type="module" data-hub-start src="app.js?v=20260930-hub"></script>
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin><link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js"><link rel="modulepreload" href="https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js"><link rel="preconnect" href="https://asia-northeast3-fir-lms-prod.cloudfunctions.net" crossorigin><link rel="icon" href="assets/hub-mark.svg"><link rel="stylesheet" href="styles.css?v=20261002-inbox"><script src="runtime-config.js" defer></script><script type="module" data-hub-start src="app.js?v=20261002-inbox"></script>
 </head>
 <body>
 <a class="skip" href="#workspace">작업 화면으로 건너뛰기</a>
 <header class="topbar" id="topbar">
   <button class="icon-button mobile-menu" id="open-menu" aria-label="앱 메뉴 열기" aria-expanded="false" aria-controls="sidebar"></button>
-  <div class="brand"><img src="assets/hub-mark.svg" alt="에스에듀 허브" width="36" height="36"><strong>에스에듀 허브</strong></div>
+  <button class="brand" id="home-button" type="button" aria-label="허브 시작 화면"><img src="assets/hub-mark.svg" alt="에스에듀 허브" width="36" height="36"><strong>에스에듀 허브</strong></button>
   <div class="breadcrumb"><span aria-hidden="true">/</span><h1 id="current-app" tabindex="-1">라이브 시간표</h1></div>
   <form class="login-strip" id="hub-login" aria-label="통합 로그인" aria-describedby="auth-state">
     <fieldset disabled><legend class="sr-only">통합 계정으로 로그인</legend>
@@ -18,7 +18,13 @@
       <button type="submit" class="login-button">로그인 <span aria-hidden="true">→</span></button>
     </fieldset><button type="button" id="forgot-password" class="account-link">비밀번호 찾기</button>
     <span id="auth-state" class="sr-only" role="status">연결 확인 중</span>
-  </form><div id="user-strip" hidden><span id="user-name"></span><button id="choose-worker" class="button" type="button" hidden>근무자 변경</button><button id="change-password" class="account-link" type="button">비밀번호 변경</button><button id="logout" class="button" type="button">로그아웃</button></div>
+  </form><div id="user-strip" hidden><span id="user-name"></span><button id="choose-worker" class="button" type="button" hidden>근무자 변경</button><button id="activity-trigger" class="icon-button" type="button" aria-label="내 업무 알림" title="내 업무 알림" aria-expanded="false" aria-controls="activity-panel"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 6 9 7 9-7"/></svg><span id="activity-badge" hidden></span></button><button id="change-password" class="account-link" type="button">비밀번호 변경</button><button id="logout" class="button" type="button">로그아웃</button></div>
+  <section id="activity-panel" aria-label="내 업무 알림" hidden>
+    <div class="activity-heading"><div><h2>내 업무 알림</h2><p id="activity-owner"></p></div><button id="activity-close" class="icon-button" aria-label="업무 알림 닫기">×</button></div>
+    <div class="activity-filters" role="group" aria-label="알림 분류"><button data-activity-filter="all" aria-pressed="true">전체</button><button data-activity-filter="request" aria-pressed="false">확인할 요청</button><button data-activity-filter="history" aria-pressed="false">활동 이력</button></div>
+    <p id="activity-status" role="status"></p><div id="activity-list"></div><details id="activity-connections"><summary>앱별 연결 상태</summary><ul id="activity-sources"></ul></details>
+    <footer class="activity-footer"><button id="activity-refresh" class="button">새로고침</button><button id="activity-read" class="button">모두 읽음</button><small>읽음 표시는 이번 로그인 동안만 유지됩니다.<br>업무 완료·동의 상태는 해당 앱에서 처리합니다.</small></footer>
+  </section>
   <div class="header-actions" role="group" aria-label="현재 앱 도구">
     <button id="reload" class="icon-button" type="button" aria-label="현재 앱 다시 불러오기" title="다시 불러오기"></button>
     <a id="external" class="icon-button" target="_blank" rel="noopener noreferrer" aria-label="현재 앱 새 탭에서 열기" title="새 탭에서 열기"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7m0-7L10 14M10 4H4v16h16v-6"/></svg></a>
@@ -44,6 +50,17 @@
 </aside>
 <main id="workspace" tabindex="-1" aria-label="앱 작업 화면">
   <section class="app-stage" aria-label="선택한 앱">
+    <section id="hub-intro" aria-labelledby="intro-title" hidden>
+      <div class="intro-top"><span id="intro-greeting"></span><button id="intro-replay" type="button">연결 장면 다시 보기 <span aria-hidden="true">↻</span></button></div>
+      <div class="intro-layout">
+        <div class="intro-story"><h2 id="intro-title">수업에서 운영까지,<br>하나로 이어지는 하루.</h2><p>에스에듀의 업무가 만나는 곳.<br>지금 필요한 앱부터 시작하세요.</p>
+          <div class="intro-emblem"><svg class="intro-trails" viewBox="0 0 540 300" aria-hidden="true"><path d="M160 150H310Q350 150 350 90T400 30H540"/><path d="M160 150H540"/><path d="M160 150H310Q350 150 350 210T400 270H540"/></svg><img src="assets/sedu-logo.png" alt="에스에듀 학원" width="1000" height="1000"><span class="intro-junction" aria-hidden="true"></span></div>
+          <div class="intro-instruction"><span aria-hidden="true">←</span><p>왼쪽 메뉴는 언제나 이 자리에.<br><strong>앱을 오가도 허브는 그대로입니다.</strong></p></div>
+        </div>
+        <div class="intro-destinations"><div class="intro-list-title"><h3 id="intro-menu-title">오늘의 업무를 여는 곳</h3><span id="intro-app-count"></span></div><nav id="intro-apps" aria-label="시작할 업무 앱"></nav><div class="intro-detail"><span id="intro-detail-title">원하는 앱을 선택하세요</span><p id="intro-detail-text">계정에 허용된 앱만 표시됩니다. 선택하면 이 작업공간에서 연결을 시작합니다.</p></div></div>
+      </div>
+      <footer class="intro-bottom"><p>한 번의 로그인으로, 허용된 앱에 같은 계정으로 연결합니다.</p><span>상단 로고를 누르면 이 화면으로 돌아옵니다.</span></footer>
+    </section>
     <div id="auth-gate"><div id="loading-art" hidden aria-hidden="true"><div class="orbit orbit-one"><i></i></div><div class="orbit orbit-two"><i></i></div><div class="loading-core" id="loading-icon"></div><div class="loading-spark spark-one"></div><div class="loading-spark spark-two"></div></div><h2 id="gate-title">상단에서 로그인해 주세요</h2><p id="gate-message">로그인하면 사용할 수 있는 앱이 표시됩니다.</p><button class="button" id="retry-connection" hidden>다시 연결</button></div>
     <div id="frame-host"></div>
     <div id="external-panel" hidden>

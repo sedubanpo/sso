@@ -1,0 +1,12 @@
+{
+  "functions": [
+    {
+      "source": "slms",
+      "codebase": "hub-activity-reader"
+    },
+    {
+      "source": "teacher",
+      "codebase": "hub-teacher-reader"
+    }
+  ]
+}

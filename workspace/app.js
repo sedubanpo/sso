@@ -1,9 +1,12 @@
+import {installLeaveGuard} from './auth/leave-guard.mjs';
 import {openAppTab} from './auth/new-tab.mjs?v=20260920';
 import {createNoticeFeed} from './auth/notices.mjs?v=20260930';
-import {visibleWorkers,menuVisible} from './auth/presentation.mjs?v=20260930';
+import {createActivityFeed,activityKinds} from './auth/activity.mjs?v=20261002-inbox';
+import {visibleWorkers,menuVisible,availableApps,introGroups} from './auth/presentation.mjs?v=20261002-inbox';
 import {createHubAuth} from './auth/hub-auth.mjs?v=20260920-roster';
 import {createConnection} from './auth/connection.mjs?v=20260920';
 'use strict';
+installLeaveGuard();
 const apps = [
  {id:'timetable',name:'라이브 시간표',description:'당일 수업 현황과 반 배정 확인',url:'https://sedubanpo.github.io/timetable',icon:'calendar'},
  {id:'teacher-portal',name:'강사 포털',description:'출결, 수업 기록, 자료 업로드',url:'https://sedubanpo.github.io/t-portal/',icon:'book'},
@@ -33,7 +36,7 @@ function drawNavigation(){
  for(const staff of [false,true]){if(staff&&role==='teacher')continue;const group=document.createElement('section');group.className='nav-group';group.setAttribute('aria-label',staff?'실무자 운영':'수업 운영');group.innerHTML=`<h2 class="group-label">${staff?'실무자 운영':'수업 운영'}</h2>`;
  for(const app of apps.filter(a=>menuVisible(a)&&!!a.staff===staff&&actor?.apps.includes(a.id))){const button=document.createElement('button');button.className='nav-item';button.dataset.app=app.id;button.setAttribute('aria-label',`${app.name}, ${app.description}`);button.innerHTML=icon(app.icon)+`<span class="nav-copy"><strong>${app.name}</strong><small>${app.description}</small></span>`;button.addEventListener('click',()=>{selectApp(app.id);if(mobile.matches)closeMenu();});button.addEventListener('mouseenter',()=>showTip(button,app));button.addEventListener('mouseleave',()=>{tooltipTimer=setTimeout(hideTip,150);});button.addEventListener('focus',()=>showTip(button,app));button.addEventListener('blur',hideTip);const row=document.createElement('div');row.className='nav-row';const open=document.createElement('button');open.className='nav-new-tab';open.type='button';open.setAttribute('aria-label',app.name+' 새 탭에서 열기');open.title=app.name+' 새 탭에서 열기';open.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7m0-7L10 14M10 4H4v16h16v-6"/></svg>';open.onclick=()=>openInNewTab(app.id);row.append(button,open);group.append(row);} $('navigation').append(group);}
 }
-function setGate(title,message,retry=false,loading=false){$('loading-art').hidden=!loading;$('auth-gate').classList.toggle('is-loading',loading);$('auth-gate').setAttribute('aria-busy',String(loading));$('auth-gate').hidden=false;$('gate-title').textContent=title;$('gate-message').textContent=message;$('retry-connection').hidden=!retry;}
+function setGate(title,message,retry=false,loading=false){$('hub-intro').hidden=true;$('loading-art').hidden=!loading;$('auth-gate').classList.toggle('is-loading',loading);$('auth-gate').setAttribute('aria-busy',String(loading));$('auth-gate').hidden=false;$('gate-title').textContent=title;$('gate-message').textContent=message;$('retry-connection').hidden=!retry;}
 // Embedding is a shell presentation policy; server app permissions remain authoritative.
 function opensExternally(id){return !['intranet','synchro'].includes(id)&&!!actor?.appEntries[id]?.external;}
 function renderSelected(){
@@ -70,6 +73,7 @@ function connectApp(id,external=false){
 }
 function selectApp(id,updateUrl=true){
  if(!actor)return;
+ $('hub-intro').hidden=true;
  const app=apps.find(a=>a.id===id&&actor.apps.includes(a.id))||apps.find(a=>menuVisible(a)&&actor.apps.includes(a.id));
  if(!app){setGate('사용할 수 있는 앱이 없습니다','관리자에게 앱 사용 권한을 확인해 주세요.');return;}
  $('external').hidden=false;selected=app.id;$('loading-icon').innerHTML=icon(app.icon);clearTimeout(timer);hideTip();closeHelp(false);
@@ -90,12 +94,12 @@ async function loginFromHeader(event){
    actor=result;role=actor.role;$('hub-login').hidden=true;$('user-strip').hidden=false;$('user-name').textContent=actor.name;$('login-password').value='';
    $('choose-worker').hidden=!result.canSwitchWorker;$('change-password').hidden=false;
    if(result.canSwitchWorker){actor=null;drawNavigation();setGate('근무자 계정을 선택해 주세요','선택한 계정의 권한으로 업무를 시작합니다.');await showWorkers(true);}
-   else{noticeFeed.start();drawNavigation();selectApp(new URLSearchParams(location.search).get('app'));$('current-app').focus();}
+   else{noticeFeed.start();activityFeed.start();drawNavigation();showIntro();$('current-app').focus();}
  }catch(error){$('auth-state').textContent='로그인 실패';setGate('로그인하지 못했습니다',error.message||'로그인 정보를 확인해 주세요.');}
  finally{authBusy=false;fields.disabled=false;$('login-password').value='';}
 }
 async function logoutHub(){
- if(authBusy)return;authBusy=true;$('logout').disabled=true;actor=null;noticeFeed.stop();closeNotice(false);
+ if(authBusy)return;authBusy=true;$('logout').disabled=true;actor=null;noticeFeed.stop();activityFeed.stop();closeActivity(false);closeNotice(false);
  const logoutResults=await Promise.all([...connections.values(),...Array.from(popupConnections,x=>x.connection)].map(connection=>connection.logout().catch(()=>false)));connections.clear();popupConnections.clear();$('tab-status').textContent='';
  for(const frame of frames.values())frame.remove();frames.clear();connectionStates.clear();
  try{await hubAuth.logout();}finally{
@@ -106,15 +110,15 @@ $('logout').onclick=logoutHub;
 $('external').onclick=event=>{if(actor){event.preventDefault();connectApp(selected,true);}};
 $('retry-connection').onclick=()=>actor?connectApp(selected,opensExternally(selected)):bootAuthentication();
 function closeMenu(){document.body.classList.remove('menu-open');$('backdrop').hidden=true;$('open-menu').setAttribute('aria-expanded','false');$('topbar').inert=false;$('workspace').inert=false;$('sidebar').inert=mobile.matches;if(mobile.matches)$('open-menu').focus();}
-$('open-menu').onclick=()=>{closeNotice(false);closeHelp(false);document.body.classList.add('menu-open');$('backdrop').hidden=false;$('open-menu').setAttribute('aria-expanded','true');$('sidebar').inert=false;$('topbar').inert=true;$('workspace').inert=true;$('close-menu').focus();};
+$('open-menu').onclick=()=>{closeActivity(false);closeNotice(false);closeHelp(false);document.body.classList.add('menu-open');$('backdrop').hidden=false;$('open-menu').setAttribute('aria-expanded','true');$('sidebar').inert=false;$('topbar').inert=true;$('workspace').inert=true;$('close-menu').focus();};
 $('close-menu').onclick=closeMenu;$('backdrop').onclick=closeMenu;
 $('expand').onclick=()=>{hideTip();const expanded=document.body.classList.toggle('expanded');$('expand').setAttribute('aria-checked',String(expanded));$('expand').title=expanded?'메뉴 설명 접기':'메뉴 설명 펼치기';};
 function closeHelp(restoreFocus=true){const wasOpen=!$('help-panel').hidden;$('help-panel').hidden=true;$('help').setAttribute('aria-expanded','false');if(wasOpen&&restoreFocus)$('help').focus();}
-$('help').onclick=()=>{closeNotice(false);const open=$('help-panel').hidden;$('help-panel').hidden=!open;$('help').setAttribute('aria-expanded',String(open));};
+$('help').onclick=()=>{closeActivity(false);closeNotice(false);const open=$('help-panel').hidden;$('help-panel').hidden=!open;$('help').setAttribute('aria-expanded',String(open));};
 $('close-help').onclick=()=>closeHelp();
 document.addEventListener('pointerdown',event=>{if(!$('help-panel').contains(event.target)&&!$('help').contains(event.target))closeHelp(false);});
 $('reload').onclick=()=>connectApp(selected);
-document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();closeHelp();closeNotice();if(document.body.classList.contains('menu-open'))closeMenu();}if(e.key==='Tab'&&document.body.classList.contains('menu-open')){const focusable=[$('close-menu'),...Array.from(document.querySelectorAll('.nav-item,.nav-new-tab')).filter(el=>el.getClientRects().length)];const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();closeHelp();closeNotice();closeActivity();if(document.body.classList.contains('menu-open'))closeMenu();}if(e.key==='Tab'&&document.body.classList.contains('menu-open')){const focusable=[$('close-menu'),...Array.from(document.querySelectorAll('.nav-item,.nav-new-tab')).filter(el=>el.getClientRects().length)];const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
 mobile.addEventListener('change',()=>{closeMenu();hideTip();});$('navigation').addEventListener('scroll',hideTip);window.addEventListener('resize',hideTip);
 function tick(){const now=new Date();$('date').textContent=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'long',day:'numeric',weekday:'long'}).format(now);$('time').textContent=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(now);$('date').dateTime=now.toISOString();$('time').dateTime=now.toISOString();$('help-time').textContent=$('date').textContent+' · '+$('time').textContent+' (서울)';$('help-time').dateTime=now.toISOString();}tick();setInterval(tick,1000);
 $('sidebar').inert=mobile.matches;$('external').hidden=true;$('reload').hidden=true;$('current-app').textContent='작업공간';
@@ -128,7 +132,7 @@ export async function bootAuthentication(sdkFactory){
 if(document.querySelector('script[data-hub-start]'))bootAuthentication();
 
 function closeNotice(restore=true){const wasOpen=!$('notice-panel').hidden;$('notice-panel').hidden=true;$('notice-trigger').setAttribute('aria-expanded','false');if(wasOpen&&restore)$('notice-trigger').focus();}
-$('notice-trigger').onclick=()=>{const open=$('notice-panel').hidden;closeHelp(false);$('notice-panel').hidden=!open;$('notice-trigger').setAttribute('aria-expanded',String(open));if(open&&actor)noticeFeed.refresh();};
+$('notice-trigger').onclick=()=>{const open=$('notice-panel').hidden;closeHelp(false);closeActivity(false);$('notice-panel').hidden=!open;$('notice-trigger').setAttribute('aria-expanded',String(open));if(open&&actor)noticeFeed.refresh();};
 $('notice-close').onclick=()=>closeNotice();
 $('notice-refresh').onclick=()=>noticeFeed.refresh();
 $('notice-lms').onclick=()=>{closeNotice(false);selectApp('lms');};
@@ -191,12 +195,69 @@ async function selectWorker(person,button){
  if(workerBusy)return;workerBusy=true;button.classList.add('is-connecting');button.querySelector('.worker-card-hint').textContent='연결하고 있습니다…';
  $('worker-dialog').querySelectorAll('button').forEach(b=>b.disabled=true);$('worker-result').textContent=person.name+' 계정으로 연결하고 있습니다…';
  try{
-  noticeFeed.stop();closeNotice(false);
+  noticeFeed.stop();activityFeed.stop();closeActivity(false);closeNotice(false);
   const results=await Promise.all([...connections.values(),...Array.from(popupConnections).filter(x=>!x.target.closed).map(x=>x.connection)].map(c=>c.logout().catch(()=>false)));
   connections.clear();if(results.every(Boolean))popupConnections.clear();else for(const item of popupConnections)if(item.target.closed)popupConnections.delete(item);for(const frame of frames.values())frame.remove();frames.clear();connectionStates.clear();actor=null;drawNavigation();
   if(results.some(x=>!x))throw Error('일부 앱의 로그아웃을 확인하지 못했습니다. 별도로 열린 앱 탭을 닫은 뒤 다시 선택해 주세요.');
   actor=await hubAuth.switchWorker(person.uid);role=actor.role;$('user-name').textContent=actor.name;$('change-password').hidden=true;
-  workerRequired=false;$('worker-dialog').close();noticeFeed.start();drawNavigation();selectApp(new URLSearchParams(location.search).get('app'));
+  workerRequired=false;$('worker-dialog').close();noticeFeed.start();activityFeed.start();drawNavigation();showIntro();
  }catch(error){workerRequired=true;$('worker-cancel').textContent='로그아웃';$('worker-result').textContent=error.message;setGate('근무자 계정 선택이 필요합니다','계정 연결을 완료한 뒤 앱을 이용할 수 있습니다.');}
  finally{workerBusy=false;$('worker-dialog').querySelectorAll('button').forEach(b=>b.disabled=false);button.classList.remove('is-connecting');button.querySelector('.worker-card-hint').textContent=person.position==='공용 계정'?'공용으로 시작':'선택하여 시작';if($('worker-dialog').open)button.focus();}
 }
+
+function showIntro(){
+ if(!actor)return;
+ selected='';hideTip();closeHelp(false);closeNotice(false);closeActivity(false);
+ for(const frame of frames.values())frame.hidden=true;
+ $('auth-gate').hidden=true;$('external-panel').hidden=true;$('hub-intro').hidden=false;
+ $('reload').hidden=true;$('external').hidden=true;$('current-app').textContent='시작 화면';$('current-app').removeAttribute('title');document.title='에스에듀 허브';
+ $('app-description').textContent='필요한 업무 앱을 선택해 시작하세요.';$('connection-state').textContent='';
+ document.querySelectorAll('.nav-item').forEach(b=>b.removeAttribute('aria-current'));
+ $('intro-greeting').textContent=actor.name+(actor.name.endsWith('님')?'':'님')+', 반갑습니다.';
+ const available=availableApps(apps,actor);$('intro-app-count').textContent=available.length+'개의 연결';$('intro-apps').replaceChildren();
+ $('intro-menu-title').textContent=actor.role==='teacher'?'선생님의 수업 작업공간':'실무자의 업무 작업공간';
+ for(const group of introGroups(apps,actor)){const section=document.createElement('section');section.className='intro-app-group';const heading=document.createElement('h4');heading.textContent=group.label;section.append(heading);
+ for(const app of group.apps){const button=document.createElement('button');button.type='button';button.className='intro-app';button.innerHTML=icon(app.icon)+`<span>${app.name}</span><span class="intro-arrow" aria-hidden="true">↗</span>`;
+ const explain=()=>{$('intro-detail-title').textContent=app.name;$('intro-detail-text').textContent=app.description;warmApp(app.id);};button.onpointerenter=explain;button.onfocus=explain;button.onclick=()=>selectApp(app.id);section.append(button);}$('intro-apps').append(section);}
+ $('intro-detail-title').textContent=available.length?'원하는 앱을 선택하세요':'사용할 수 있는 앱이 없습니다';$('intro-detail-text').textContent=available.length?'왼쪽 메뉴 또는 이곳에서 앱을 선택하세요. 연결된 앱으로 돌아가면 열어 둔 화면을 이어서 이용합니다.':'관리자에게 앱 사용 권한을 확인해 주세요.';
+ history.replaceState(null,'',location.pathname);document.querySelector('.skip').href='#workspace';
+ replayIntro();$('current-app').focus();
+}
+function replayIntro(){const el=$('hub-intro');el.classList.remove('intro-arriving');void el.offsetWidth;el.classList.add('intro-arriving');}
+$('intro-replay').onclick=replayIntro;
+$('home-button').onclick=()=>{if(actor)showIntro();else $('login-id').focus();};
+
+// Each source is a read-only, identity-scoped endpoint; no app data is scraped from iframes.
+const activitySources=window.SEDU_HUB_CONFIG?.activitySources||[
+ {appId:'desk',label:'데스크 포털',url:'https://desk-portal-api-furtzykzmq-du.a.run.app/v1/desk/getHubNotifications'},
+ {appId:'lms',label:'S-LMS',url:'https://asia-northeast3-fir-lms-prod.cloudfunctions.net/hubActivityApi',callable:true},
+ {appId:'teacher-portal',label:'강사 포털',url:'https://asia-northeast3-fir-lms-prod.cloudfunctions.net/teacherPortalNotifications'}
+];
+let activityView={items:[],sources:[],loading:false},activityFilter='all';
+const activityFeed=createActivityFeed({getActor:()=>actor,getToken:()=>hubAuth.getIdToken(),sources:activitySources,onChange:state=>{activityView=state;renderActivity();}});
+function closeActivity(focus=true){const opened=!$('activity-panel').hidden;$('activity-panel').hidden=true;$('activity-trigger').setAttribute('aria-expanded','false');if(opened&&focus)$('activity-trigger').focus();}
+function renderActivity(){
+ const {items,sources,loading}=activityView,unread=items.filter(i=>!i.read).length;
+ $('activity-badge').textContent=unread>99?'99+':String(unread);$('activity-badge').hidden=!unread;
+ $('activity-trigger').setAttribute('aria-label','내 업무 알림'+(unread?', 읽지 않은 알림 '+unread+'건':''));
+ $('activity-owner').textContent=actor?actor.name+' 계정의 요청과 활동':'';
+ const incomplete=sources.some(s=>s.state==='error'||s.state==='partial');
+ $('activity-status').textContent=loading?'앱별 알림을 확인하고 있습니다…':incomplete?'일부 알림을 확인하지 못했습니다. 앱별 연결 상태를 확인해 주세요.':items.length?'최근 알림 '+items.length+'건':'새로운 업무 알림이 없습니다.';
+ $('activity-list').replaceChildren();
+ const visible=items.filter(i=>activityFilter==='all'||(activityFilter==='request'?i.request:!i.request));
+ for(const item of visible){
+  const button=document.createElement('button');button.type='button';button.className='activity-item'+(item.read?' is-read':'');
+  const meta=document.createElement('span');meta.className='activity-item-meta';meta.textContent=activityKinds[item.kind].label+' · '+new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}).format(new Date(item.createdAt));
+  const title=document.createElement('strong');title.textContent=item.title;
+  const summary=document.createElement('span');summary.className='activity-item-summary';summary.textContent=item.summary;
+  const action=document.createElement('span');action.className='activity-item-action';action.textContent=(apps.find(a=>a.id===item.appId)?.name||'앱')+'에서 확인 →';
+  button.append(meta,title,summary,action);button.onclick=()=>{activityFeed.markRead(item.id);closeActivity(false);selectApp(item.appId);$('current-app').focus();};$('activity-list').append(button);
+ }
+ if(!visible.length&&!loading){const empty=document.createElement('p');empty.className='activity-empty';empty.textContent=incomplete?'표시할 알림이 아직 없습니다. 연결이 완료되면 이곳에 모입니다.':activityFilter==='all'?'다음 업무 소식이 도착하면 알려드릴게요.':'이 분류에 표시할 알림이 없습니다.';$('activity-list').append(empty);}
+ $('activity-sources').replaceChildren();for(const source of sources){const li=document.createElement('li');li.textContent=source.label+' · '+({ready:'연결됨',loading:'확인 중',error:'연결 확인 필요',partial:'일부 이력 연동 대기'}[source.state])+(source.pending?.length?' ('+source.pending.join(', ')+')':'');$('activity-sources').append(li);}
+ $('activity-refresh').disabled=loading;$('activity-read').disabled=!unread;
+}
+$('activity-trigger').onclick=()=>{const open=$('activity-panel').hidden;closeHelp(false);closeNotice(false);$('activity-panel').hidden=!open;$('activity-trigger').setAttribute('aria-expanded',String(open));if(open){renderActivity();$('activity-close').focus();}};
+$('activity-close').onclick=()=>closeActivity();$('activity-refresh').onclick=()=>activityFeed.refresh();$('activity-read').onclick=()=>activityFeed.markAllRead();
+for(const button of document.querySelectorAll('[data-activity-filter]'))button.onclick=()=>{activityFilter=button.dataset.activityFilter;document.querySelectorAll('[data-activity-filter]').forEach(b=>b.setAttribute('aria-pressed',String(b===button)));renderActivity();};
+document.addEventListener('pointerdown',e=>{if(!$('activity-panel').contains(e.target)&&!$('activity-trigger').contains(e.target))closeActivity(false);});
