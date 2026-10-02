@@ -1,9 +1,11 @@
-# Hub read-only activity functions
+# Hub read-only activity function ownership
 
-Independent codebases: hub-activity-reader and hub-teacher-reader. Only these two functions are deployed from this directory; existing S-LMS and teacher portal entrypoints are not redeployed.
+Only the teacher notification function is maintained here.
 
-Deploy: `firebase deploy --project fir-lms-prod --only functions:hub-activity-reader,functions:hub-teacher-reader`
+Deploy: `firebase deploy --project fir-lms-prod --only functions:hub-teacher-reader`
 
-Sources: S-LMS functions/hub-activity.js and lesson-logs actor modules; teacher portal portal-functions/hub-notifications.js and its parity-tested class-log engine. Source copies are intentionally small, do not include credentials or unrelated functions, and must be reconciled when upstream authorization or agreement rules change.
+S-LMS owns `hubActivityApi` in its `slms-roadmap` codebase, from `s-lms/functions/index.js`, `hub-activity.js` and `activity-requests.js`. Its existing URL is unchanged. The production ownership transfer was verified on 2026-10-02 (ACTIVE, updated 12:33:21 UTC). Do not deploy the retired `hub-activity-reader` source or delete the live function. The obsolete local source copy has been removed to prevent overwriting the request producer integration.
 
-Actual exam/log request producers remain unconfirmed. The server reports those kinds as pending; no requests are fabricated. Read markers remain browser-memory only.
+S-LMS now supplies exam-request, consultation-request and lesson-request from its authenticated request inbox. COMPLETED/CANCELLED requests become history. The hub shows the latest 30 days, up to 60 S-LMS items; full history remains in S-LMS. No hubActivitySources/slms configuration is required.
+
+The teacher source copy remains scoped to caller-owned hours reminders and must be reconciled with upstream agreement and authorization changes. Read markers remain browser-memory only.
