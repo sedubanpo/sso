@@ -40,23 +40,24 @@ export function createBroker({identity, store, registry=APPS, hubOrigins, now=Da
     const {actor,decoded,docs}=await session(bearer);
     const present=actor=>({...actor,appEntries:Object.fromEntries(actor.apps.map(id=>[id,registry[id]]))});
     const maySwitch=async()=>String(docs[0]?.role).toUpperCase()==='ADMIN'&&!!identity.isOperator&&await identity.isOperator(decoded.uid);
-    if(path==='/session')return {...present(actor),canSwitchWorker:await maySwitch()};
-    if(path==='/workers'||path==='/switch-worker'){
+    if(path==='/session')return {...present(actor),canSwitchWorker:await maySwitch(),canSwitchTeacher:await maySwitch()};
+    if(['/workers','/switch-worker','/teachers','/switch-teacher'].includes(path)){
+      const teacherMode=path.includes('teacher');
       if(method!=='POST'||!await maySwitch())throw new HttpError(403,'이 계정은 근무자 계정을 선택할 수 없습니다.');
-      if(path==='/workers'){
+      if(path==='/workers'||path==='/teachers'){
         const workers=[];
-        const [candidates,icons]=await Promise.all([identity.workers(),identity.positionIcons?.().catch(()=>({}))||{}]);
+        const [candidates,icons]=await Promise.all([teacherMode?identity.teachers():identity.workers(),identity.positionIcons?.().catch(()=>({}))||{}]);
         for(const candidate of candidates){
-          try{const target=authorizeProfile(candidate.uid,...candidate.docs,registry);if(target.role==='staff'){const position=String(candidate.docs[0]?.staffPosition||candidate.docs[1]?.staffPosition||'').slice(0,40);const icon=icons[position];workers.push({uid:target.uid,name:target.name,position,iconUrl:typeof icon==='string'&&/^https:\/\//.test(icon)?icon:''});}}catch{}
+          try{const target=authorizeProfile(candidate.uid,...candidate.docs,registry);if(target.role===(teacherMode?'teacher':'staff')){const position=String(teacherMode?(candidate.docs[0]?.subject||candidate.docs[1]?.department||'강사'):(candidate.docs[0]?.staffPosition||candidate.docs[1]?.staffPosition||'')).slice(0,40);const icon=icons[position];workers.push({uid:target.uid,name:target.name,position,iconUrl:typeof icon==='string'&&/^https:\/\//.test(icon)?icon:''});}}catch{}
         }
         return {workers,operator:{uid:actor.uid,name:actor.name}};
       }
       if(typeof body.uid!=='string'||!body.uid||body.uid.length>128)throw new HttpError(400,'근무자를 선택해 주세요.');
       const [targetUser,targetDocs]=await Promise.all([identity.user(body.uid),identity.profile(body.uid)]);
       const target=authorizeProfile(body.uid,...targetDocs,registry);
-      if(targetUser.disabled||target.role!=='staff')throw new HttpError(403,'활성 근무자 계정만 선택할 수 있습니다.');
-      await identity.auditSwitch({operatorUid:decoded.uid,targetUid:target.uid,at:now()});
-      return {actor:present(target),customToken:await identity.mint(target.uid)};
+      if(targetUser.disabled||target.role!==(teacherMode?'teacher':'staff'))throw new HttpError(403,'활성 근무자 계정만 선택할 수 있습니다.');
+      await identity.auditSwitch({operatorUid:decoded.uid,targetUid:target.uid,mode:teacherMode?'teacher-test':'worker',at:now()});
+      return {actor:{...present(target),canSwitchTeacher:target.uid===decoded.uid},customToken:await identity.mint(target.uid)};
     }
     if(path==='/ticket') {
       if(!actor.apps.includes(body.appId))throw new HttpError(403,'이 앱의 사용 권한이 없습니다.');

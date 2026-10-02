@@ -17,9 +17,8 @@ exports.teacherPortalNotifications = onRequest({region:'asia-northeast3',timeout
       return {role,name:String(user.name||profile.displayName||'').trim()};
     }
     const who=await account();
-    if(!['INSTRUCTOR','TEACHER'].includes(who.role))return res.json({recipientUid:claims.uid,items:[],pendingKinds:[]});
     if(!who.name)throw Error('Missing teacher identity');
-    const result=await require('./hub-notifications').load({uid:claims.uid,name:who.name,token});
+    const result=await require('./hub-notifications')[['INSTRUCTOR','TEACHER'].includes(who.role)?'load':'loadIssues']({uid:claims.uid,name:who.name,token});
     const fresh=await account();if(fresh.name!==who.name||fresh.role!==who.role)throw Object.assign(Error('Changed identity'),{code:'auth/denied'});
     return res.json(result);
   }catch(error){return res.status(String(error.code||'').startsWith('auth/')?403:503).json({error:'시수 동의 알림을 확인하지 못했습니다.'});}

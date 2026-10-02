@@ -30,3 +30,15 @@ async function load({uid,name,token,now=new Date(),fetcher=fetch}){
  return {recipientUid:uid,items:results.flatMap(r=>r.status==='fulfilled'?r.value:[]).sort((a,b)=>b.createdAt.localeCompare(a.createdAt)).slice(0,60),partial:results.some(r=>r.status==='rejected'),pendingKinds:[],window:'이번 달·지난달의 미동의 수업일',basis:'미동의 상태에서 계산한 알림이며 별도 발송 이력은 아닙니다.'};
 }
 module.exports={load,summarize};
+
+function summarizeIssues(result,uid){
+ if(result.success!==true||result.isAdmin!==true||!Array.isArray(result.rows))throw Error('Staff issue access unavailable');
+ return result.rows.filter(row=>['received','held'].includes(row.workflow_status)&&row.id&&Number.isFinite(Date.parse(row.created_at))).map(row=>({id:'hours-issue:'+row.id,recipientUid:uid,kind:'hours-issue',title:String(row.teacher_name||'강사').slice(0,60)+' · 시수 오류 제보',summary:[row.lesson_date,row.student_name,row.issue_text].filter(Boolean).join(' · ').slice(0,240),createdAt:new Date(row.created_at).toISOString()})).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+}
+async function loadIssues({uid,token,fetcher=fetch}){
+ const response=await fetcher(SUPABASE_URL+'/rest/v1/rpc/portal_list_teacher_hours_issues',{method:'POST',headers:{apikey:PUBLIC_KEY,Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({payload:{}}),signal:AbortSignal.timeout(12000)});
+ if(!response.ok)throw Error('Issue source unavailable');
+ const items=summarizeIssues(await response.json(),uid);
+ return {recipientUid:uid,items:items.slice(0,100),partial:items.length>100,pendingKinds:[],window:'처리 대기·보류 중인 시수 오류 제보'};
+}
+module.exports.loadIssues=loadIssues;module.exports.summarizeIssues=summarizeIssues;

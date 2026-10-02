@@ -1,9 +1,9 @@
 import {installLeaveGuard} from './auth/leave-guard.mjs';
 import {openAppTab} from './auth/new-tab.mjs?v=20260920';
 import {createNoticeFeed} from './auth/notices.mjs?v=20260930';
-import {createActivityFeed,activityKinds} from './auth/activity.mjs?v=20261002-inbox';
-import {visibleWorkers,menuVisible,availableApps,introGroups} from './auth/presentation.mjs?v=20261002-inbox';
-import {createHubAuth} from './auth/hub-auth.mjs?v=20260920-roster';
+import {createActivityFeed,activityKinds,decidePermission} from './auth/activity.mjs?v=20261003-staff-inbox';
+import {visibleWorkers,menuVisible,availableApps,introGroups} from './auth/presentation.mjs?v=20261003-staff-inbox';
+import {createHubAuth} from './auth/hub-auth.mjs?v=20261003-staff-inbox';
 import {createConnection} from './auth/connection.mjs?v=20260920';
 'use strict';
 installLeaveGuard();
@@ -92,7 +92,7 @@ async function loginFromHeader(event){
  try{
    const result=await hubAuth.login($('login-id').value,password);if(!result)return;
    actor=result;role=actor.role;$('hub-login').hidden=true;$('user-strip').hidden=false;$('user-name').textContent=actor.name;$('login-password').value='';
-   $('choose-worker').hidden=!result.canSwitchWorker;$('change-password').hidden=false;
+   $('choose-worker').hidden=!result.canSwitchWorker;$('choose-teacher').hidden=!result.canSwitchTeacher;$('change-password').hidden=false;
    if(result.canSwitchWorker){actor=null;drawNavigation();setGate('근무자 계정을 선택해 주세요','선택한 계정의 권한으로 업무를 시작합니다.');await showWorkers(true);}
    else{noticeFeed.start();activityFeed.start();drawNavigation();showIntro();$('current-app').focus();}
  }catch(error){$('auth-state').textContent='로그인 실패';setGate('로그인하지 못했습니다',error.message||'로그인 정보를 확인해 주세요.');}
@@ -156,10 +156,10 @@ $('navigation').addEventListener('pointerover',e=>{const id=e.target.closest('.n
 $('navigation').addEventListener('focusin',e=>{const id=e.target.closest('.nav-row')?.querySelector('[data-app]')?.dataset.app;if(id)warmApp(id);});
 
 const workerPositions=['대표','원장','부원장','센터장','실장','과장','대리','주임','사원'];
-let workerBusy=false,workerRequired=false;
+let workerBusy=false,workerRequired=false,teacherMode=false;
 function renderWorkers(workers){
  const roster=$('worker-roster');roster.replaceChildren();
- const groups=new Map();for(const person of visibleWorkers(workers)){const key=person.position||'직급 미지정';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(person);}
+ const groups=new Map();for(const person of (teacherMode?workers:visibleWorkers(workers))){const key=person.position||'직급 미지정';if(!groups.has(key))groups.set(key,[]);groups.get(key).push(person);}
  const rank=p=>workerPositions.includes(p)?workerPositions.indexOf(p):99;
  for(const [position,people] of [...groups].sort(([a],[b])=>rank(a)-rank(b)||a.localeCompare(b,'ko'))){
   const section=document.createElement('section');section.className='worker-group';if(position==='공용 계정')section.classList.add('worker-shared');
@@ -177,18 +177,21 @@ function renderWorkers(workers){
   }section.append(grid);roster.append(section);
  }
 }
-async function showWorkers(required=false,refresh=false){
- if(workerBusy)return;workerBusy=true;workerRequired=required;
+async function showWorkers(required=false,refresh=false,teachers=false){
+ if(workerBusy)return;workerBusy=true;workerRequired=required;teacherMode=teachers;
+ $('worker-title').textContent=teachers?'강사 계정을 선택하세요':'근무자 계정을 선택하세요';
+ $('worker-description').textContent=teachers?'선택한 강사의 실제 이름과 권한으로 연결됩니다. 테스트 중 업무 기록을 변경할 때 주의해 주세요.':'근무자 카드를 누르면 해당 이름과 권한으로 바로 시작합니다.';
  $('worker-cancel').disabled=true;$('worker-refresh').disabled=true;$('worker-cancel').textContent=required?'로그아웃':'취소';
  $('worker-result').textContent='근무자 목록을 불러오고 있습니다…';$('worker-roster').setAttribute('aria-busy','true');
  $('worker-roster').innerHTML='<div class="worker-skeleton" aria-hidden="true">'+Array(6).fill('<span></span>').join('')+'</div>';
  if(!$('worker-dialog').open)$('worker-dialog').showModal();
- try{const {workers}=await hubAuth.workers(refresh);renderWorkers(workers);$('worker-result').textContent=visibleWorkers(workers).length?'':'선택할 수 있는 활성 근무자가 없습니다.';}
+ try{const {workers}=await (teacherMode?hubAuth.teachers(refresh):hubAuth.workers(refresh));renderWorkers(workers);$('worker-result').textContent=(teacherMode?workers:visibleWorkers(workers)).length?'':'선택할 수 있는 활성 계정이 없습니다.';}
  catch(error){$('worker-roster').replaceChildren();$('worker-result').textContent=error.message;}
  finally{workerBusy=false;$('worker-cancel').disabled=false;$('worker-refresh').disabled=false;$('worker-roster').setAttribute('aria-busy','false');($('worker-roster').querySelector('button')||$('worker-refresh')).focus();}
 }
 $('choose-worker').onclick=()=>showWorkers(!actor);
-$('worker-refresh').onclick=()=>showWorkers(workerRequired,true);
+$('choose-teacher').onclick=()=>showWorkers(false,false,true);
+$('worker-refresh').onclick=()=>showWorkers(workerRequired,true,teacherMode);
 $('worker-cancel').onclick=async()=>{if(workerBusy)return;$('worker-dialog').close();if(workerRequired)await logoutHub();};
 $('worker-dialog').addEventListener('cancel',e=>{e.preventDefault();if(!workerBusy)$('worker-cancel').click();});
 async function selectWorker(person,button){
@@ -199,7 +202,7 @@ async function selectWorker(person,button){
   const results=await Promise.all([...connections.values(),...Array.from(popupConnections).filter(x=>!x.target.closed).map(x=>x.connection)].map(c=>c.logout().catch(()=>false)));
   connections.clear();if(results.every(Boolean))popupConnections.clear();else for(const item of popupConnections)if(item.target.closed)popupConnections.delete(item);for(const frame of frames.values())frame.remove();frames.clear();connectionStates.clear();actor=null;drawNavigation();
   if(results.some(x=>!x))throw Error('일부 앱의 로그아웃을 확인하지 못했습니다. 별도로 열린 앱 탭을 닫은 뒤 다시 선택해 주세요.');
-  actor=await hubAuth.switchWorker(person.uid);role=actor.role;$('user-name').textContent=actor.name;$('change-password').hidden=true;
+  actor=await hubAuth.switchWorker(person.uid,teacherMode);role=actor.role;$('choose-teacher').hidden=!actor.canSwitchTeacher;$('user-name').textContent=actor.name;$('change-password').hidden=true;
   workerRequired=false;$('worker-dialog').close();noticeFeed.start();activityFeed.start();drawNavigation();showIntro();
  }catch(error){workerRequired=true;$('worker-cancel').textContent='로그아웃';$('worker-result').textContent=error.message;setGate('근무자 계정 선택이 필요합니다','계정 연결을 완료한 뒤 앱을 이용할 수 있습니다.');}
  finally{workerBusy=false;$('worker-dialog').querySelectorAll('button').forEach(b=>b.disabled=false);button.classList.remove('is-connecting');button.querySelector('.worker-card-hint').textContent=person.position==='공용 계정'?'공용으로 시작':'선택하여 시작';if($('worker-dialog').open)button.focus();}
@@ -228,11 +231,14 @@ $('intro-replay').onclick=replayIntro;
 $('home-button').onclick=()=>{if(actor)showIntro();else $('login-id').focus();};
 
 // Each source is a read-only, identity-scoped endpoint; no app data is scraped from iframes.
+const permissionApi=window.SEDU_HUB_CONFIG?.permissionApi||'https://asia-northeast3-fir-lms-prod.cloudfunctions.net/hubPermissionApi';
 const activitySources=window.SEDU_HUB_CONFIG?.activitySources||[
  {appId:'desk',label:'데스크 포털',url:'https://desk-portal-api-furtzykzmq-du.a.run.app/v1/desk/getHubNotifications'},
+ {appId:'lms',label:'S-LMS 권한 요청',staffOnly:true,url:permissionApi,callable:true},
  {appId:'lms',label:'S-LMS',url:'https://asia-northeast3-fir-lms-prod.cloudfunctions.net/hubActivityApi',callable:true},
  {appId:'teacher-portal',label:'강사 포털',url:'https://asia-northeast3-fir-lms-prod.cloudfunctions.net/teacherPortalNotifications'}
 ];
+let permissionBusy=false;
 let activityView={items:[],sources:[],loading:false},activityFilter='all';
 const activityFeed=createActivityFeed({getActor:()=>actor,getToken:()=>hubAuth.getIdToken(),sources:activitySources,onChange:state=>{activityView=state;renderActivity();}});
 function closeActivity(focus=true){const opened=!$('activity-panel').hidden;$('activity-panel').hidden=true;$('activity-trigger').setAttribute('aria-expanded','false');if(opened&&focus)$('activity-trigger').focus();}
@@ -251,7 +257,19 @@ function renderActivity(){
   const title=document.createElement('strong');title.textContent=item.title;
   const summary=document.createElement('span');summary.className='activity-item-summary';summary.textContent=item.summary;
   const action=document.createElement('span');action.className='activity-item-action';action.textContent=(apps.find(a=>a.id===item.appId)?.name||'앱')+'에서 확인 →';
-  button.append(meta,title,summary,action);button.onclick=()=>{activityFeed.markRead(item.id);closeActivity(false);selectApp(item.appId);$('current-app').focus();};$('activity-list').append(button);
+  button.append(meta,title,summary,action);button.onclick=()=>{activityFeed.markRead(item.id);closeActivity(false);selectApp(item.appId);$('current-app').focus();};
+  const row=document.createElement('div');row.className='activity-row';row.append(button);
+  if(item.kind==='permission-request'&&item.actionId&&actor?.role==='staff'){
+   const controls=document.createElement('div');controls.className='activity-decisions';
+   const result=document.createElement('p');result.className='activity-decision-result';result.setAttribute('role','status');
+   for(const [status,label] of [['APPROVED','승인'],['REJECTED','거절']]){const choice=document.createElement('button');choice.type='button';choice.className='button';choice.textContent=label;choice.disabled=permissionBusy;choice.setAttribute('aria-label',item.title+' '+label);choice.onclick=async()=>{
+    if(permissionBusy)return;const selected=actor;permissionBusy=true;controls.querySelectorAll('button').forEach(b=>b.disabled=true);result.textContent=label+' 처리 중입니다…';
+    try{await decidePermission({getToken:()=>hubAuth.getIdToken(),id:item.actionId,status,url:permissionApi});if(actor!==selected)return;result.textContent=label+'했습니다.';await activityFeed.refresh();}
+    catch(error){if(actor===selected)result.textContent=error.message;}
+    finally{permissionBusy=false;if(actor===selected)$('activity-list').querySelectorAll('.activity-decisions button').forEach(b=>b.disabled=false);}
+   };controls.append(choice);}row.append(controls,result);
+  }
+  $('activity-list').append(row);
  }
  if(!visible.length&&!loading){const empty=document.createElement('p');empty.className='activity-empty';empty.textContent=incomplete?'표시할 알림이 아직 없습니다. 연결이 완료되면 이곳에 모입니다.':activityFilter==='all'?'다음 업무 소식이 도착하면 알려드릴게요.':'이 분류에 표시할 알림이 없습니다.';$('activity-list').append(empty);}
  $('activity-sources').replaceChildren();for(const source of sources){const li=document.createElement('li');li.textContent=source.label+' · '+({ready:'연결됨',loading:'확인 중',error:'연결 확인 필요',partial:'일부 이력 연동 대기'}[source.state])+(source.pending?.length?' ('+source.pending.join(', ')+')':'');$('activity-sources').append(li);}

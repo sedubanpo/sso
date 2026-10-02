@@ -17,8 +17,8 @@ export function firebaseBroker(hubOrigins){
     const data=alias.data();
     return !user.disabled&&!!data&&data.active!==false&&!!data.email&&data.email===user.email;
   };
-  identity.workers=async()=>{
-    const result=await db.collection('users').where('role','in',['ADMIN','STAFF','COORDINATOR']).get();
+  const candidatesFor=async roles=>{
+    const result=await db.collection('users').where('role','in',roles).get();
     // Batch Auth and Firestore reads; reuse users already returned by the query.
     const candidates=[];
     for(let offset=0;offset<result.docs.length;offset+=100){
@@ -32,6 +32,8 @@ export function firebaseBroker(hubOrigins){
     }
     return candidates;
   };
+  identity.workers=()=>candidatesFor(['ADMIN','STAFF','COORDINATOR']);
+  identity.teachers=()=>candidatesFor(['INSTRUCTOR','TEACHER']);
   identity.positionIcons=async()=>{
     const result=await db.collection('sharedIconAssets').where('targetType','==','STAFF_POSITION').get();
     return Object.fromEntries(result.docs.map(doc=>doc.data()).filter(x=>x.status!=='DELETED'&&x.lookupKey?.startsWith('staff-position:')).map(x=>[x.lookupKey.slice(15),x.imageUrl||x.downloadURL||'']));
