@@ -5,7 +5,7 @@ export function createHttpHandler({broker,allowedOrigins,ready=true}) {
     res.setHeader('Cache-Control','no-store');res.setHeader('Content-Type','application/json; charset=utf-8');res.setHeader('Vary','Origin');
     if(!allowedOrigins.includes(origin)){res.statusCode=403;res.end(JSON.stringify({error:'허용되지 않은 연결 주소입니다.'}));return;}
     res.setHeader('Access-Control-Allow-Origin',origin);
-    if(req.method==='OPTIONS'){res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');res.setHeader('Access-Control-Allow-Headers','Authorization, Content-Type');res.statusCode=204;res.end();return;}
+    if(req.method==='OPTIONS'){res.setHeader('Access-Control-Max-Age','600');res.setHeader('Access-Control-Allow-Methods','GET, POST, OPTIONS');res.setHeader('Access-Control-Allow-Headers','Authorization, Content-Type');res.statusCode=204;res.end();return;}
     if(!ready){res.statusCode=503;res.end(JSON.stringify({error:'통합 인증 서버가 아직 연결되지 않았습니다.'}));return;}
     try{
       if(req.method==='POST'&&!String(req.headers['content-type']||'').startsWith('application/json'))throw new HttpError(415,'JSON 요청이 필요합니다.');

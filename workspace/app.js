@@ -3,7 +3,7 @@ import {openAppTab} from './auth/new-tab.mjs?v=20260920';
 import {createNoticeFeed} from './auth/notices.mjs?v=20260930';
 import {createActivityFeed,activityKinds,decidePermission,createInboxClient} from './auth/activity.mjs?v=20261003-inbox-history';
 import {visibleWorkers,menuVisible,availableApps,introGroups} from './auth/presentation.mjs?v=20261003-inbox-history';
-import {createHubAuth} from './auth/hub-auth.mjs?v=20261003-inbox-history';
+import {createHubAuth} from './auth/hub-auth.mjs?v=20261017-connect-speed';
 import {createConnection} from './auth/connection.mjs?v=20260920';
 'use strict';
 installLeaveGuard();
@@ -120,10 +120,13 @@ document.addEventListener('pointerdown',event=>{if(!$('help-panel').contains(eve
 $('reload').onclick=()=>connectApp(selected);
 document.addEventListener('keydown',e=>{if(e.key==='Escape'){hideTip();closeHelp();closeNotice();closeActivity();if(document.body.classList.contains('menu-open'))closeMenu();}if(e.key==='Tab'&&document.body.classList.contains('menu-open')){const focusable=[$('close-menu'),...Array.from(document.querySelectorAll('.nav-item,.nav-new-tab')).filter(el=>el.getClientRects().length)];const first=focusable[0],last=focusable.at(-1);if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}else if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}}});
 mobile.addEventListener('change',()=>{closeMenu();hideTip();});$('navigation').addEventListener('scroll',hideTip);window.addEventListener('resize',hideTip);
-function tick(){const now=new Date();$('date').textContent=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'long',day:'numeric',weekday:'long'}).format(now);$('time').textContent=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'}).format(now);$('date').dateTime=now.toISOString();$('time').dateTime=now.toISOString();$('help-time').textContent=$('date').textContent+' · '+$('time').textContent+' (서울)';$('help-time').dateTime=now.toISOString();}tick();setInterval(tick,1000);
+const dateFormat=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'long',day:'numeric',weekday:'long'}),timeFormat=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
+function tick(){const now=new Date();$('date').textContent=dateFormat.format(now);$('time').textContent=timeFormat.format(now);$('date').dateTime=now.toISOString();$('time').dateTime=now.toISOString();$('help-time').textContent=$('date').textContent+' · '+$('time').textContent+' (서울)';$('help-time').dateTime=now.toISOString();}tick();setInterval(tick,1000);
 $('sidebar').inert=mobile.matches;$('external').hidden=true;$('reload').hidden=true;$('current-app').textContent='작업공간';
 export async function bootAuthentication(sdkFactory){
  hubAuth=await createHubAuth({brokerUrl,recoveryUrl:window.SEDU_HUB_CONFIG?.recoveryUrl,...(sdkFactory?{sdkFactory}:{})});
+ // Load the memory-only SDK while the user enters credentials, alongside server readiness.
+ hubAuth.prepare().catch(()=>{});
  const ready=brokerUrl&&await hubAuth.available();
  $('hub-login').querySelector('fieldset').disabled=!ready;
  $('auth-state').textContent=ready?'로그인':'서버 연결 필요';

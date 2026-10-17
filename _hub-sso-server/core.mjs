@@ -40,7 +40,7 @@ export function createBroker({identity, store, registry=APPS, hubOrigins, now=Da
     const {actor,decoded,docs}=await session(bearer);
     const present=actor=>({...actor,appEntries:Object.fromEntries(actor.apps.map(id=>[id,registry[id]]))});
     const maySwitch=async()=>String(docs[0]?.role).toUpperCase()==='ADMIN'&&!!identity.isOperator&&await identity.isOperator(decoded.uid);
-    if(path==='/session')return {...present(actor),canSwitchWorker:await maySwitch(),canSwitchTeacher:await maySwitch()};
+    if(path==='/session'){const allowed=await maySwitch();return {...present(actor),canSwitchWorker:allowed,canSwitchTeacher:allowed};}
     if(['/workers','/switch-worker','/teachers','/switch-teacher'].includes(path)){
       const teacherMode=path.includes('teacher');
       if(method!=='POST'||!await maySwitch())throw new HttpError(403,'이 계정은 근무자 계정을 선택할 수 없습니다.');

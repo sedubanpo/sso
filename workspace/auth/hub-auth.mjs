@@ -28,7 +28,8 @@ async function loadFirebase(name='sedu-hub'){
   },resetPassword:email=>sdk.sendPasswordResetEmail(auth,email),changePassword:async(current,next)=>{const user=auth.currentUser;if(!user?.email)throw Error('다시 로그인해 주세요.');await sdk.reauthenticateWithCredential(user,sdk.EmailAuthProvider.credential(user.email,current));await sdk.updatePassword(user,next);},logout:()=>sdk.signOut(auth),get user(){return auth.currentUser;}};
 }
 export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northeast3-fir-lms-prod.cloudfunctions.net/hubRecoveryApi',sdkFactory=loadFirebase}){
-  let sdk=null,workerSdk=null,usingWorker=false,actor=null,generation=0,roster=null,teacherRoster=null;
+  let sdk=null,sdkPending=null,workerSdk=null,usingWorker=false,actor=null,generation=0,roster=null,teacherRoster=null;
+  function prepare(){if(sdk)return Promise.resolve(sdk);if(!sdkPending)sdkPending=Promise.resolve().then(()=>sdkFactory()).then(value=>sdk=value).finally(()=>{sdkPending=null;});return sdkPending;}
   async function request(path,body){
     const user=sdk?.user;if(!user)throw Error('상단에서 로그인해 주세요.');
     const token=await user.getIdToken();
@@ -36,12 +37,13 @@ export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northea
     const result=await response.json();if(!response.ok)throw Error(result.error||'사용 권한을 확인하지 못했습니다.');return result;
   }
   return {
+    prepare,
     async available(){try{const r=await fetch(brokerUrl+'/health',{signal:AbortSignal.timeout(5000)});return r.ok&&(await r.json()).ready===true;}catch{return false;}},
     async login(identifier,password){
       const id=normalizeIdentifier(identifier);if(!password)throw Error('비밀번호를 입력해 주세요.');
       const version=++generation;roster=null;teacherRoster=null;
       try{
-        if(!sdk)sdk=await sdkFactory();
+        await prepare();
         if(version!==generation)return null;
         await sdk.login(id,password);
         if(version!==generation){await sdk.logout();return null;}
