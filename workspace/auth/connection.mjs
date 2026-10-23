@@ -1,4 +1,4 @@
-import {visibleDeadline} from './visible-deadline.mjs';
+import {visibleDeadline} from './visible-deadline.mjs?v=20261023-focus2';
 export const randomNonce=()=>{const bytes=crypto.getRandomValues(new Uint8Array(32));return btoa(String.fromCharCode(...bytes)).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');};
 export function createConnection({appId,entry,target,getIdToken,brokerUrl,onState,timeoutMs=60000,windowObject=window}){
   const nonce=randomNonce(),url=new URL(entry);url.searchParams.set('hub_nonce',nonce);

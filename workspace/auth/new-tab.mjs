@@ -1,4 +1,4 @@
-import {createConnection} from './connection.mjs?v=20261023-background-focus';
+import {createConnection} from './connection.mjs?v=20261023-background-focus2';
 // Separate lifecycle: opening a tab must never dispose the embedded app.
 export function openAppTab({appId,entry,brokerUrl,getIdToken,onState=()=>{},windowObject=window,connect=createConnection}){
  const target=windowObject.open('about:blank','_blank');
