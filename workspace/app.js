@@ -1,3 +1,4 @@
+import {presentFrames} from './auth/frame-presentation.mjs';
 import {installLeaveGuard} from './auth/leave-guard.mjs';
 import {openAppTab} from './auth/new-tab.mjs?v=20260920';
 import {createNoticeFeed} from './auth/notices.mjs?v=20260930';
@@ -42,7 +43,7 @@ function opensExternally(id){return !['intranet','synchro'].includes(id)&&!!acto
 function renderSelected(){
  const app=apps.find(a=>a.id===selected);if(!app)return;
  const state=connectionStates.get(selected);
- for(const [id,frame] of frames)frame.hidden=id!==selected||state?.state!=='ready';
+ presentFrames(frames,selected,state?.state,$('frame-host'));
  $('external-panel').hidden=true;
  if(state?.state==='ready'){
    if(opensExternally(selected)){setGate('새 탭에서 연결되었습니다','열린 앱 탭에서 업무를 이어가세요.');}
