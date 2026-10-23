@@ -1,6 +1,7 @@
 const{chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');const fs=require('fs'),http=require('http'),assert=require('node:assert/strict');
 (async()=>{const source=fs.readFileSync('workspace/app.js','utf8');const connect=source.slice(source.indexOf('function connectApp('),source.indexOf('\nfunction selectApp('));let tickets=0;
 const server=http.createServer((req,res)=>{const u=new URL(req.url,'http://local');res.setHeader('Content-Type','text/html');
+if(u.pathname==='/visible-deadline.mjs'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync('workspace/auth/visible-deadline.mjs'));}
 if(u.pathname==='/connection.mjs'){res.setHeader('Content-Type','text/javascript');return res.end(fs.readFileSync('workspace/auth/connection.mjs'));}
 if(u.pathname==='/ticket'){tickets++;res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({code:'t'.repeat(43)}));}
 if(u.pathname==='/child'){return res.end(`<script>const nonce=new URL(location.href).searchParams.get('hub_nonce');addEventListener('message',e=>{if(e.source===parent&&e.origin===location.origin&&e.data.type==='ticket'&&e.data.nonce===nonce)parent.postMessage({channel:'sedu-hub-v1',type:'authenticated',appId:'desk',nonce},location.origin)});parent.postMessage({channel:'sedu-hub-v1',type:'ready',appId:'desk',nonce,challenge:'c'.repeat(43)},location.origin)</script>`);}
