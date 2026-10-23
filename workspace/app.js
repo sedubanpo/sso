@@ -5,7 +5,7 @@ import {createNoticeFeed} from './auth/notices.mjs?v=20260930';
 import {createActivityFeed,activityKinds,decidePermission,createInboxClient} from './auth/activity.mjs?v=20261003-inbox-history';
 import {visibleWorkers,menuVisible,availableApps,introGroups} from './auth/presentation.mjs?v=20261003-inbox-history';
 import {createHubAuth} from './auth/hub-auth.mjs?v=20261017-connect-speed';
-import {createConnection} from './auth/connection.mjs?v=20261023-background-focus2';
+import {createConnection} from './auth/connection.mjs?v=20261023-ready-deadline';
 'use strict';
 installLeaveGuard();
 const apps = [
@@ -49,7 +49,7 @@ function renderSelected(){
    if(opensExternally(selected)){setGate('새 탭에서 연결되었습니다','열린 앱 탭에서 업무를 이어가세요.');}
    else $('auth-gate').hidden=true;
  }else if(state?.state==='error')setGate('앱에 연결하지 못했습니다',state.message,true);
- else setGate(opensExternally(selected)?'새 탭에서 이용하는 앱입니다':'로그인을 연결하고 있습니다…',opensExternally(selected)?'상단의 새 탭 열기로 같은 계정을 연결하세요.':(state?.message||'계정과 앱 사용 권한을 확인하고 있습니다.'),false,!opensExternally(selected));
+ else setGate(opensExternally(selected)?'새 탭에서 이용하는 앱입니다':'로그인을 연결하고 있습니다…',opensExternally(selected)?'상단의 새 탭 열기로 같은 계정을 연결하세요.':(state?.message||'계정과 앱 사용 권한을 확인하고 있습니다.'),!!state?.message,!opensExternally(selected));
 }
 function openInNewTab(id){
  const entry=actor?.appEntries[id];if(!entry)return;const expectedActor=actor;
