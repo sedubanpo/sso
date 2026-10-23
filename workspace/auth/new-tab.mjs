@@ -1,4 +1,4 @@
-import {createConnection} from './connection.mjs?v=20261023-ready-deadline';
+import {createConnection} from './connection.mjs?v=20261023-resume-once';
 // Separate lifecycle: opening a tab must never dispose the embedded app.
 export function openAppTab({appId,entry,brokerUrl,getIdToken,onState=()=>{},windowObject=window,connect=createConnection}){
  const target=windowObject.open('about:blank','_blank');

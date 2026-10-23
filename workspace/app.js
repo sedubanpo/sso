@@ -5,7 +5,7 @@ import {createNoticeFeed} from './auth/notices.mjs?v=20260930';
 import {createActivityFeed,activityKinds,decidePermission,createInboxClient} from './auth/activity.mjs?v=20261003-inbox-history';
 import {visibleWorkers,menuVisible,availableApps,introGroups} from './auth/presentation.mjs?v=20261003-inbox-history';
 import {createHubAuth} from './auth/hub-auth.mjs?v=20261017-connect-speed';
-import {createConnection} from './auth/connection.mjs?v=20261023-ready-deadline';
+import {createConnection} from './auth/connection.mjs?v=20261023-resume-once';
 'use strict';
 installLeaveGuard();
 const apps = [
@@ -57,8 +57,18 @@ function openInNewTab(id){
  const item=openAppTab({appId:id,entry:entry.url,brokerUrl,getIdToken:()=>{if(actor!==expectedActor)throw Error('로그인 계정이 변경되었습니다.');return hubAuth.getIdToken();},onState:state=>{if(actor!==expectedActor)return;clearTimeout(tabStatusTimer);if(state==='ready')tabStatusTimer=setTimeout(()=>{$('tab-status').textContent='';},5000);$('tab-status').textContent=state==='blocked'?'팝업이 차단되었습니다. 브라우저에서 팝업을 허용해 주세요.':state==='ready'?'새 탭 로그인 연결 완료':state==='error'?'새 탭 연결에 실패했습니다. 해당 앱 메뉴에서 다시 시도해 주세요.':'새 탭에 연결하고 있습니다…';}});
  if(item){popupConnections.add(item);$('tab-status').textContent='새 탭에 연결하고 있습니다…';}
 }
+const deskResume = {started:0,retried:false};
+function resumeDeskConnection(){
+ if(selected!=='desk'||!actor||deskResume.retried||performance.now()-deskResume.started<8000)return;
+ if(!connections.get('desk')?.waitingForReady)return;
+ deskResume.retried=true;
+ connectApp('desk');
+}
+window.addEventListener('focus',resumeDeskConnection);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)resumeDeskConnection();});
 function connectApp(id,external=false){
  if(external){openInNewTab(id);return;}
+ if(id==='desk')deskResume.started=performance.now();
  const app=apps.find(a=>a.id===id),entry=actor?.appEntries[id];if(!entry||!app)return;
  if(connections.has(id)){connections.get(id).stop();connections.delete(id);}
  if(frames.has(id)){frames.get(id).remove();frames.delete(id);}
@@ -66,7 +76,7 @@ function connectApp(id,external=false){
  connectionStates.set(id,{state:'pending'});
  const expectedActor=actor;
  const connection=createConnection({appId:id,entry:entry.url,target:null,brokerUrl,getIdToken:()=>{if(actor!==expectedActor)throw Error('로그인 계정이 변경되었습니다.');return hubAuth.getIdToken();},onState:(state,message)=>{
-   if(actor!==expectedActor)return;connectionStates.set(id,{state,message});$('connection-state').textContent=state==='ready'?'인증 연결 완료':message||'인증 연결 중';if(selected===id)renderSelected();
+   if(actor!==expectedActor)return;if(id==='desk'&&state==='ready')deskResume.retried=false;connectionStates.set(id,{state,message});$('connection-state').textContent=state==='ready'?'인증 연결 완료':message||'인증 연결 중';if(selected===id)renderSelected();
  }});
  connections.set(id,connection);
  // Configure navigation before insertion so the initial document is the app,

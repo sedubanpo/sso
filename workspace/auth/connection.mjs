@@ -30,7 +30,7 @@ export function createConnection({appId,entry,target,getIdToken,brokerUrl,onStat
   // Chrome may defer the iframe document while its window is in the background.
   // The authentication budget starts when that document actually announces readiness.
   if(appId!=='desk')startDeadline();
-  return {url:url.href,stop,setTarget(next){target=next;},logout(){
+  return {url:url.href,get waitingForReady(){return !closed&&!busy&&!completed;},stop,setTarget(next){target=next;},logout(){
     if(closed)return Promise.resolve(false);
     timer();slowTimer();
     return new Promise(resolve=>{const timeout=setTimeout(()=>finishLogout(false),3000);finishLogout=ok=>{clearTimeout(timeout);stop();resolve(ok);};target.postMessage({channel:'sedu-hub-v1',type:'logout',appId,nonce},url.origin);});
