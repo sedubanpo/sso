@@ -23,8 +23,8 @@ export function createConnection({appId,entry,target,getIdToken,brokerUrl,onStat
     if(d.type==='error'){onState('error','앱에서 계정 또는 권한을 확인하지 못했습니다. 다시 연결해 주세요.');stop();}
   }
   windowObject.addEventListener('message',receive);
-  const slowTimer=visibleDeadline(()=>{if(!closed&&!completed)onState('pending','연결이 지연되고 있습니다. 잠시 기다리거나 상단에서 새 탭으로 열 수 있습니다.');},8000,windowObject.document);
-  const timer=visibleDeadline(()=>{onState('error','이 앱의 통합 로그인 연결을 확인하지 못했습니다. 앱별 연동 코드 적용 상태를 확인해 주세요.');stop();},timeoutMs,windowObject.document);
+  const slowTimer=visibleDeadline(()=>{if(!closed&&!completed)onState('pending','연결이 지연되고 있습니다. 잠시 기다리거나 상단에서 새 탭으로 열 수 있습니다.');},8000,windowObject.document, appId==='desk' ? windowObject : null);
+  const timer=visibleDeadline(()=>{onState('error','이 앱의 통합 로그인 연결을 확인하지 못했습니다. 앱별 연동 코드 적용 상태를 확인해 주세요.');stop();},timeoutMs,windowObject.document, appId==='desk' ? windowObject : null);
   return {url:url.href,stop,setTarget(next){target=next;},logout(){
     if(closed)return Promise.resolve(false);
     timer();slowTimer();

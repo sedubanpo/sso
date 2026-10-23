@@ -5,7 +5,7 @@ import {createNoticeFeed} from './auth/notices.mjs?v=20260930';
 import {createActivityFeed,activityKinds,decidePermission,createInboxClient} from './auth/activity.mjs?v=20261003-inbox-history';
 import {visibleWorkers,menuVisible,availableApps,introGroups} from './auth/presentation.mjs?v=20261003-inbox-history';
 import {createHubAuth} from './auth/hub-auth.mjs?v=20261017-connect-speed';
-import {createConnection} from './auth/connection.mjs?v=20261023-background';
+import {createConnection} from './auth/connection.mjs?v=20261023-background-focus';
 'use strict';
 installLeaveGuard();
 const apps = [
