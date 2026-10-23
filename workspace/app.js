@@ -62,14 +62,18 @@ function connectApp(id,external=false){
  const app=apps.find(a=>a.id===id),entry=actor?.appEntries[id];if(!entry||!app)return;
  if(connections.has(id)){connections.get(id).stop();connections.delete(id);}
  if(frames.has(id)){frames.get(id).remove();frames.delete(id);}
- const frame=document.createElement('iframe');frame.title=app.name;frame.referrerPolicy='strict-origin-when-cross-origin';frame.hidden=true;$('frame-host').append(frame);frames.set(id,frame);const target=frame.contentWindow;
+ const frame=document.createElement('iframe');frame.title=app.name;frame.referrerPolicy='strict-origin-when-cross-origin';frame.hidden=true;
  connectionStates.set(id,{state:'pending'});
  const expectedActor=actor;
- const connection=createConnection({appId:id,entry:entry.url,target,brokerUrl,getIdToken:()=>{if(actor!==expectedActor)throw Error('로그인 계정이 변경되었습니다.');return hubAuth.getIdToken();},onState:(state,message)=>{
+ const connection=createConnection({appId:id,entry:entry.url,target:null,brokerUrl,getIdToken:()=>{if(actor!==expectedActor)throw Error('로그인 계정이 변경되었습니다.');return hubAuth.getIdToken();},onState:(state,message)=>{
    if(actor!==expectedActor)return;connectionStates.set(id,{state,message});$('connection-state').textContent=state==='ready'?'인증 연결 완료':message||'인증 연결 중';if(selected===id)renderSelected();
  }});
  connections.set(id,connection);
+ // Configure navigation before insertion so the initial document is the app,
+ // not a separately initialized about:blank frame.
  frame.src=connection.url;
+ $('frame-host').append(frame);frames.set(id,frame);
+ connection.setTarget(frame.contentWindow);
  renderSelected();
 }
 function selectApp(id,updateUrl=true){
