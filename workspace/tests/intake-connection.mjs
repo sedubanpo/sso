@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {presentFrames} from '../auth/frame-presentation.mjs';
+import {createConnection} from '../auth/connection.mjs';
+let preparing;const host={classList:{toggle:(_,v)=>preparing=v}};
+const frame=()=>({hidden:true,inert:false,setAttribute(k,v){this[k]=v},removeAttribute(k){delete this[k]}});
+const a=frame(),b=frame(),frames=new Map([['intranet',a],['desk',b]]);
+presentFrames(frames,'intranet','pending',host);assert.equal(preparing,true);assert.equal(a.hidden,false);assert.equal(a.inert,true);assert.equal(a['aria-hidden'],'true');assert.equal(b.hidden,true);
+presentFrames(frames,'intranet','ready',host);assert.equal(a.inert,false);assert.equal(a['aria-hidden'],undefined);
+const w=new EventTarget();w.document=new EventTarget();Object.assign(w.document,{hidden:false,hasFocus:()=>true});const states=[];let calls=0;
+const old=globalThis.fetch;globalThis.fetch=async()=>({ok:true,json:async()=>({code:'t'.repeat(43)})});const target={postMessage(){}};
+const c=createConnection({appId:'intranet',entry:'https://example.test',target,getIdToken:async()=>{calls++;return 'synthetic'},brokerUrl:'https://example.test',onState:s=>states.push(s),timeoutMs:30,windowObject:w});
+await new Promise(r=>setTimeout(r,60));assert.deepEqual(states,[]);
+const message=type=>{const e=new Event('message');Object.assign(e,{origin:'https://example.test',source:target,data:{channel:'sedu-hub-v1',appId:'intranet',nonce:new URL(c.url).searchParams.get('hub_nonce'),challenge:'c'.repeat(43),type}});w.dispatchEvent(e)};
+message('ready');message('ready');await new Promise(r=>setTimeout(r,5));message('authenticated');await new Promise(r=>setTimeout(r,50));assert.equal(calls,1);assert.deepEqual(states,['ready']);c.stop();globalThis.fetch=old;
+console.log('PASS intranet pending frame rendered but inert; delayed readiness; duplicate ready; authenticated connection');

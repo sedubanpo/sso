@@ -1,4 +1,4 @@
-import {presentFrames} from './auth/frame-presentation.mjs';
+import {presentFrames} from './auth/frame-presentation.mjs?v=20261024-intake';
 import {installLeaveGuard} from './auth/leave-guard.mjs';
 import {createInquiryDestination} from './auth/inquiry-destination.mjs';
 import {openAppTab} from './auth/new-tab.mjs?v=20260920';
@@ -6,7 +6,7 @@ import {createNoticeFeed} from './auth/notices.mjs?v=20260930';
 import {createActivityFeed,activityKinds,decidePermission,createInboxClient} from './auth/activity.mjs?v=20261003-inbox-history';
 import {visibleWorkers,menuVisible,availableApps,introGroups} from './auth/presentation.mjs?v=20261003-inbox-history';
 import {createHubAuth} from './auth/hub-auth.mjs?v=20261017-connect-speed';
-import {createConnection} from './auth/connection.mjs?v=20261023-resume-once';
+import {createConnection} from './auth/connection.mjs?v=20261024-intake';
 'use strict';
 installLeaveGuard();
 const apps = [
