@@ -55,7 +55,7 @@ function drawNavigation(){
 }
 function setGate(title,message,retry=false,loading=false){$('hub-intro').hidden=true;$('loading-art').hidden=!loading;$('auth-gate').classList.toggle('is-loading',loading);$('auth-gate').setAttribute('aria-busy',String(loading));$('auth-gate').hidden=false;$('gate-title').textContent=title;$('gate-message').textContent=message;$('retry-connection').hidden=!retry;}
 // Embedding is a shell presentation policy; server app permissions remain authoritative.
-function opensExternally(id){return !['intranet','synchro'].includes(id)&&!!actor?.appEntries[id]?.external;}
+function opensExternally(id){return id==='intranet'||(id!=='synchro'&&!!actor?.appEntries[id]?.external);}
 function renderSelected(){
  const app=apps.find(a=>a.id===selected);if(!app)return;
  const state=connectionStates.get(selected);
@@ -65,7 +65,7 @@ function renderSelected(){
    if(opensExternally(selected)){setGate('새 탭에서 연결되었습니다','열린 앱 탭에서 업무를 이어가세요.');}
    else $('auth-gate').hidden=true;
  }else if(state?.state==='error')setGate('앱에 연결하지 못했습니다',state.message,true);
- else setGate(opensExternally(selected)?'새 탭에서 이용하는 앱입니다':'로그인을 연결하고 있습니다…',opensExternally(selected)?'상단의 새 탭 열기로 같은 계정을 연결하세요.':(state?.message||'계정과 앱 사용 권한을 확인하고 있습니다.'),!!state?.message,!opensExternally(selected));
+ else setGate(opensExternally(selected)?'새 탭에서 이용하는 앱입니다':'로그인을 연결하고 있습니다…',opensExternally(selected)?'상단의 새 탭 열기를 누르면 추가 로그인 없이 같은 계정과 문의를 연결합니다.':(state?.message||'계정과 앱 사용 권한을 확인하고 있습니다.'),!!state?.message,!opensExternally(selected));
 }
 function openInNewTab(id){
  const entry=actor?.appEntries[id];if(!entry)return;const expectedActor=actor;
