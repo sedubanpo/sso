@@ -15,7 +15,7 @@ const apps = [
  {id:'lms',name:'에스LMS',description:'티칭로그와 수업 자료 확인',url:'https://fir-lms-prod.web.app/',icon:'layers'},
  {id:'desk',name:'데스크 포털',description:'상담, 등록, 학생 관리',url:'https://sedubanpo.github.io/desk-portal/',icon:'desk',staff:true},
  {id:'fees',name:'수강료 계산기',description:'수강 유형별 수강료 계산',url:'https://sedubanpo.github.io/feecalc/',icon:'calculator',staff:true},
- {id:'synchro',name:'싱크로에스',description:'강사·학생 시간표 충돌 확인',url:'https://synchro-s.vercel.app/synchro-s',icon:'sync',staff:true},
+ {id:'synchro',name:'싱크로에스',description:'강사·학생 시간표 충돌 확인',url:'https://synchro-s--fir-lms-prod.us-east4.hosted.app/synchro-s',icon:'sync',staff:true},
  {id:'accounts',name:'계정 관리',description:'학생 상태와 강사 계정 관리',url:'https://sedubanpo.github.io/s-lms/account-management/',icon:'users',staff:true},
  {id:'intranet',name:'인트라넷',description:'일일 업무와 학원 내부 소통',url:'https://sedu-intranet-prod.web.app/?v=daily-workspace-20260906',icon:'building',staff:true,external:true}
 ];
