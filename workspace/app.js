@@ -5,7 +5,7 @@ import {openAppTab} from './auth/new-tab.mjs?v=20260920';
 import {createNoticeFeed} from './auth/notices.mjs?v=20260930';
 import {createActivityFeed,activityKinds,decidePermission,createInboxClient} from './auth/activity.mjs?v=20261003-inbox-history';
 import {visibleWorkers,menuVisible,availableApps,introGroups} from './auth/presentation.mjs?v=20261003-inbox-history';
-import {createHubAuth} from './auth/hub-auth.mjs?v=20261017-connect-speed';
+import {createHubAuth} from './auth/hub-auth.mjs?v=20261031-remember';
 import {createConnection} from './auth/connection.mjs?v=20261024-intake';
 'use strict';
 installLeaveGuard();
@@ -121,15 +121,18 @@ function selectApp(id,updateUrl=true){
  if(updateUrl)history.replaceState(null,'',inquiryDestination.query(selected));
  document.querySelector('.skip').href=inquiryDestination.query(selected)+'#workspace';
 }
+async function enterSession(result){
+   actor=result;role=actor.role;$('hub-login').hidden=true;$('user-strip').hidden=false;$('user-name').textContent=actor.name;$('login-password').value='';
+   $('choose-worker').hidden=!result.canSwitchWorker;$('choose-teacher').hidden=!result.canSwitchTeacher;$('change-password').hidden=!!result.selectedAccount;
+   if(result.canSwitchWorker&&!result.selectedAccount){actor=null;drawNavigation();setGate('근무자 계정을 선택해 주세요','선택한 계정의 권한으로 업무를 시작합니다.');await showWorkers(true);}
+   else{noticeFeed.start();activityFeed.start();drawNavigation();resumeInquiryDestination();$('current-app').focus();}
+}
 async function loginFromHeader(event){
  event.preventDefault();if(authBusy||event.isComposing)return;authBusy=true;
  const fields=$('hub-login').querySelector('fieldset'),password=$('login-password').value;fields.disabled=true;$('auth-state').textContent='로그인 중';
  try{
-   const result=await hubAuth.login($('login-id').value,password);if(!result)return;
-   actor=result;role=actor.role;$('hub-login').hidden=true;$('user-strip').hidden=false;$('user-name').textContent=actor.name;$('login-password').value='';
-   $('choose-worker').hidden=!result.canSwitchWorker;$('choose-teacher').hidden=!result.canSwitchTeacher;$('change-password').hidden=false;
-   if(result.canSwitchWorker){actor=null;drawNavigation();setGate('근무자 계정을 선택해 주세요','선택한 계정의 권한으로 업무를 시작합니다.');await showWorkers(true);}
-   else{noticeFeed.start();activityFeed.start();drawNavigation();resumeInquiryDestination();$('current-app').focus();}
+   const result=await hubAuth.login($('login-id').value,password,$('remember-login').checked);if(!result)return;
+   await enterSession(result);
  }catch(error){$('auth-state').textContent='로그인 실패';setGate('로그인하지 못했습니다',error.message||'로그인 정보를 확인해 주세요.');}
  finally{authBusy=false;fields.disabled=false;$('login-password').value='';}
 }
@@ -159,11 +162,25 @@ mobile.addEventListener('change',()=>{closeMenu();hideTip();});$('navigation').a
 const dateFormat=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',month:'long',day:'numeric',weekday:'long'}),timeFormat=new Intl.DateTimeFormat('ko-KR',{timeZone:'Asia/Seoul',hour:'2-digit',minute:'2-digit',second:'2-digit',hourCycle:'h23'});
 function tick(){const now=new Date();$('date').textContent=dateFormat.format(now);$('time').textContent=timeFormat.format(now);$('date').dateTime=now.toISOString();$('time').dateTime=now.toISOString();$('help-time').textContent=$('date').textContent+' · '+$('time').textContent+' (서울)';$('help-time').dateTime=now.toISOString();}tick();setInterval(tick,1000);
 $('sidebar').inert=mobile.matches;$('external').hidden=true;$('reload').hidden=true;$('current-app').textContent='작업공간';
+function invalidateSession(){
+ actor=null;noticeFeed.stop();activityFeed.stop();closeActivity(false);closeNotice(false);
+ for(const c of connections.values())c.logout().catch(()=>{});
+ for(const item of popupConnections)item.connection.logout().catch(()=>{});
+ connections.clear();popupConnections.clear();for(const f of frames.values())f.remove();frames.clear();connectionStates.clear();
+ $('worker-dialog').close();$('hub-login').hidden=false;$('user-strip').hidden=true;drawNavigation();
+ setGate('로그인 계정이 변경되었습니다','다른 허브 창에서 로그아웃하거나 계정이 변경되었습니다. 다시 로그인해 주세요.');
+}
 export async function bootAuthentication(sdkFactory){
- hubAuth=await createHubAuth({brokerUrl,recoveryUrl:window.SEDU_HUB_CONFIG?.recoveryUrl,...(sdkFactory?{sdkFactory}:{})});
+ hubAuth ||= await createHubAuth({onInvalidated:invalidateSession,brokerUrl,recoveryUrl:window.SEDU_HUB_CONFIG?.recoveryUrl,...(sdkFactory?{sdkFactory}:{})});
  // Load the memory-only SDK while the user enters credentials, alongside server readiness.
  hubAuth.prepare().catch(()=>{});
  const ready=brokerUrl&&await hubAuth.available();
+ if(ready){
+   authBusy=true;$('auth-state').textContent='저장된 로그인 확인 중';
+   try{const restored=await hubAuth.restore();if(restored){$('remember-login').checked=true;await enterSession(restored);}}
+   catch(error){setGate('로그인 상태를 확인하지 못했습니다','연결 상태를 확인한 후 다시 시도해 주세요.',true);}
+   finally{authBusy=false;}
+ }
  $('hub-login').querySelector('fieldset').disabled=!ready;
  $('auth-state').textContent=ready?'로그인':'서버 연결 필요';
  if(!ready)setGate('통합 인증 서버 연결이 필요합니다','로그인 연동 코드는 준비되었지만 인증 서버와 앱별 수신 코드가 아직 운영 환경에 적용되지 않았습니다.',true);

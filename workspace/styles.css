@@ -76,3 +76,11 @@ main{position:fixed;top:var(--header);left:var(--sidebar);right:0;bottom:0;paddi
 .app-stage:has(#frame-host.is-preparing){position:relative}
 #frame-host.is-preparing{position:absolute;inset:0;display:block;pointer-events:none}
 .app-stage:has(#frame-host.is-preparing) #auth-gate{position:absolute;inset:0;z-index:2;background:#fff}
+
+.remember-login{display:inline-flex;align-items:center;gap:5px;font-size:11px;white-space:nowrap;color:#435570;cursor:pointer;min-height:32px}.remember-login input{width:15px;height:15px;accent-color:var(--blue)}.remember-login input:focus-visible{outline:2px solid var(--blue);outline-offset:3px}.login-strip{flex-wrap:wrap;row-gap:0}.login-strip fieldset{flex-basis:auto}@media(max-width:760px){.remember-login{min-height:24px;font-size:10px}.login-strip fieldset{flex-basis:100%}}
+/* Keep both the opt-in and recovery action reachable without squeezing the inputs. */
+body:has(#hub-login:not([hidden])){--header:88px}
+.login-strip{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 8px}
+.login-strip fieldset{grid-column:1 / -1}.remember-login input{padding:0;height:15px}
+#hub-login #forgot-password{min-height:28px;padding:4px 8px}
+@media(max-width:760px){body:has(#hub-login:not([hidden])){--header:144px}}

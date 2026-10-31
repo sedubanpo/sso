@@ -7,9 +7,9 @@ export function normalizeIdentifier(value){
 }
 async function loadFirebase(name='sedu-hub'){
   const [{initializeApp},sdk]=await Promise.all([import('https://www.gstatic.com/firebasejs/12.13.0/firebase-app.js'),import('https://www.gstatic.com/firebasejs/12.13.0/firebase-auth.js')]);
-  // Memory-only: do not inspect or reuse credentials saved by other sessions/apps.
-  const auth=sdk.initializeAuth(initializeApp(FIREBASE_CONFIG,name),{persistence:sdk.inMemoryPersistence});
-  return {loginWithToken:token=>sdk.signInWithCustomToken(auth,token),login:async(id,password)=>{
+  // Only this named hub Auth instance persists, and only after explicit opt-in.
+  const auth=sdk.initializeAuth(initializeApp(FIREBASE_CONFIG,name),{persistence:name==='sedu-hub'?sdk.browserLocalPersistence:sdk.inMemoryPersistence});
+  return {ready:()=>auth.authStateReady(),persist:keep=>sdk.setPersistence(auth,keep?sdk.browserLocalPersistence:sdk.inMemoryPersistence),watch:fn=>sdk.onAuthStateChanged(auth,fn),loginWithToken:token=>sdk.signInWithCustomToken(auth,token),login:async(id,password)=>{
     let email=id;
     if(id.endsWith('@sedu-auth.local')){
       const phone=id.split('@')[0],candidates=[phone,...(phone.startsWith('010')?[phone.slice(3)]:[])];
@@ -27,25 +27,45 @@ async function loadFirebase(name='sedu-hub'){
     return sdk.signInWithEmailAndPassword(auth,email,password);
   },resetPassword:email=>sdk.sendPasswordResetEmail(auth,email),changePassword:async(current,next)=>{const user=auth.currentUser;if(!user?.email)throw Error('다시 로그인해 주세요.');await sdk.reauthenticateWithCredential(user,sdk.EmailAuthProvider.credential(user.email,current));await sdk.updatePassword(user,next);},logout:()=>sdk.signOut(auth),get user(){return auth.currentUser;}};
 }
-export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northeast3-fir-lms-prod.cloudfunctions.net/hubRecoveryApi',sdkFactory=loadFirebase}){
+export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northeast3-fir-lms-prod.cloudfunctions.net/hubRecoveryApi',sdkFactory=loadFirebase,storage=globalThis.localStorage,onInvalidated=()=>{}}){
+  let ownerUid=null,remember=false,watching=false;
+  const selectionKey="sedu-hub:selected-account:v1";
+  const forget=()=>{try{storage?.removeItem(selectionKey);}catch{}};
   let sdk=null,sdkPending=null,workerSdk=null,usingWorker=false,actor=null,generation=0,roster=null,teacherRoster=null;
   function prepare(){if(sdk)return Promise.resolve(sdk);if(!sdkPending)sdkPending=Promise.resolve().then(()=>sdkFactory()).then(value=>sdk=value).finally(()=>{sdkPending=null;});return sdkPending;}
+  function watchOwner(){if(watching||!sdk?.watch)return;watching=true;sdk.watch(user=>{if(ownerUid&&user?.uid!==ownerUid){generation++;actor=null;usingWorker=false;ownerUid=null;onInvalidated();workerSdk?.logout().catch(()=>{});}});}
   async function request(path,body){
     const user=sdk?.user;if(!user)throw Error('상단에서 로그인해 주세요.');
-    const token=await user.getIdToken();
+    const token=await user.getIdToken();if(sdk.user?.uid!==user.uid)throw Error("로그인 계정이 변경되었습니다.");
     const response=await fetch(brokerUrl+path,{method:body?'POST':'GET',headers:{Authorization:'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(15000)});
-    const result=await response.json();if(!response.ok)throw Error(result.error||'사용 권한을 확인하지 못했습니다.');return result;
+    const result=await response.json();if(sdk.user?.uid!==user.uid)throw Error("로그인 계정이 변경되었습니다.");if(!response.ok)throw Object.assign(Error(result.error||'사용 권한을 확인하지 못했습니다.'),{status:response.status});return result;
   }
   return {
     prepare,
     async available(){try{const r=await fetch(brokerUrl+'/health',{signal:AbortSignal.timeout(5000)});return r.ok&&(await r.json()).ready===true;}catch{return false;}},
-    async login(identifier,password){
+    async restore(){
+      await prepare();await sdk.ready?.();if(!sdk.user)return null;
+      ownerUid=sdk.user.uid;remember=true;watchOwner();
+      try{
+        actor=await request('/session');
+        let saved;try{saved=JSON.parse(storage?.getItem(selectionKey)||'null');}catch{}
+        if(actor.canSwitchWorker&&saved?.owner===ownerUid&&typeof saved.uid==='string'){
+          try{return await this.switchWorker(saved.uid,saved.teacher===true);}catch(error){
+            if(![400,403,404].includes(error.status))throw error;forget();actor=await request('/session');
+          }
+        }
+        return actor;
+      }catch(error){actor=null;if([401,403].includes(error.status)){await this.logout();return null;}throw error;}
+    },
+    async login(identifier,password,keep=false){
       const id=normalizeIdentifier(identifier);if(!password)throw Error('비밀번호를 입력해 주세요.');
       const version=++generation;roster=null;teacherRoster=null;
       try{
         await prepare();
         if(version!==generation)return null;
-        await sdk.login(id,password);
+        ownerUid=null;usingWorker=false;actor=null;forget();await workerSdk?.logout();
+        await sdk.ready?.();await sdk.persist?.(keep);remember=keep;
+        await sdk.login(id,password);ownerUid=sdk.user.uid;watchOwner();
         if(version!==generation){await sdk.logout();return null;}
         const result=await request('/session');
         if(version!==generation){await sdk.logout();return null;}
@@ -59,12 +79,16 @@ export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northea
     async workers(refresh=false){if(!sdk?.user)throw Error('상단에서 로그인해 주세요.');if(roster&&!refresh)return roster;const version=generation;const result=await request('/workers',{});if(version!==generation)throw Error('다시 로그인해 주세요.');roster=result;return result;},
     async teachers(refresh=false){if(!sdk?.user)throw Error('상단에서 로그인해 주세요.');if(teacherRoster&&!refresh)return teacherRoster;const version=generation;const result=await request('/teachers',{});if(version!==generation)throw Error('다시 로그인해 주세요.');teacherRoster=result;return result;},
     async switchWorker(uid,teacherMode=false){
+      const version=generation;
       const result=await request(teacherMode?'/switch-teacher':'/switch-worker',{uid});
       if(!workerSdk)workerSdk=await sdkFactory('sedu-hub-worker');
       actor=null;await workerSdk.logout();
       usingWorker=false;
       await workerSdk.loginWithToken(result.customToken);
-      usingWorker=true;actor=result.actor;return {...actor,canSwitchWorker:true};
+      if(version!==generation){await workerSdk.logout();throw Error("로그인 계정이 변경되었습니다.");}
+      usingWorker=true;actor=result.actor;
+      if(remember){try{storage?.setItem(selectionKey,JSON.stringify({owner:ownerUid,uid,teacher:teacherMode}));}catch{}}
+      return {...actor,canSwitchWorker:true,selectedAccount:true};
     },
     async resetPassword(identifier,birthDate){
       const email=normalizeIdentifier(identifier);
@@ -84,7 +108,7 @@ export async function createHubAuth({brokerUrl,recoveryUrl='https://asia-northea
         throw Error('비밀번호를 변경하지 못했습니다. 다시 로그인한 후 시도해 주세요.');
       }
     },
-    async getIdToken(){if(!sdk?.user||!actor)throw Error('로그인이 만료되었습니다. 다시 로그인해 주세요.');return (usingWorker?workerSdk:sdk).user.getIdToken();},
-    async logout(){generation++;roster=null;teacherRoster=null;actor=null;usingWorker=false;await workerSdk?.logout();await sdk?.logout();}
+    async getIdToken(){if(!sdk?.user||!actor||(ownerUid&&sdk.user.uid!==ownerUid))throw Error('로그인이 만료되었습니다. 다시 로그인해 주세요.');const selected=(usingWorker?workerSdk:sdk).user;if(selected?.uid!==actor.uid)throw Error("로그인 계정이 변경되었습니다.");return selected.getIdToken();},
+    async logout(){ownerUid=null;remember=false;forget();generation++;roster=null;teacherRoster=null;actor=null;usingWorker=false;await workerSdk?.logout();await sdk?.logout();}
   };
 }
