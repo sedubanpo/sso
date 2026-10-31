@@ -6,7 +6,7 @@ import {createNoticeFeed} from './auth/notices.mjs?v=20260930';
 import {createActivityFeed,activityKinds,decidePermission,createInboxClient} from './auth/activity.mjs?v=20261003-inbox-history';
 import {visibleWorkers,menuVisible,availableApps,introGroups} from './auth/presentation.mjs?v=20261003-inbox-history';
 import {createHubAuth} from './auth/hub-auth.mjs?v=20261031-remember';
-import {createConnection} from './auth/connection.mjs?v=20261024-intake';
+import {createConnection} from './auth/connection.mjs?v=20261031-recovery';
 'use strict';
 installLeaveGuard();
 const apps = [
@@ -83,7 +83,7 @@ function resumeDeskConnection(){
 }
 window.addEventListener('focus',resumeDeskConnection);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)resumeDeskConnection();});
-function connectApp(id,external=false){
+function connectApp(id,external=false,startupRetry=0){
  if(external){openInNewTab(id);return;}
  if(id==='desk')deskResume.started=performance.now();
  const app=apps.find(a=>a.id===id),entry=actor?.appEntries[id];if(!entry||!app)return;
@@ -93,7 +93,13 @@ function connectApp(id,external=false){
  const frame=document.createElement('iframe');frame.title=app.name;frame.referrerPolicy='strict-origin-when-cross-origin';frame.hidden=true;
  connectionStates.set(id,{state:'pending'});
  const expectedActor=actor;
- const connection=createConnection({appId:id,entry:url,target:null,brokerUrl,getIdToken:()=>{if(actor!==expectedActor)throw Error('로그인 계정이 변경되었습니다.');return hubAuth.getIdToken();},onState:(state,message)=>{
+ const connection=createConnection({appId:id,entry:url,target:null,brokerUrl,
+ startupTimeoutMs:['fees','synchro'].includes(id)&&startupRetry===0?20000:60000,
+ onStartupTimeout:()=>{
+   if(actor!==expectedActor)return;
+   if(['fees','synchro'].includes(id)&&startupRetry===0&&selected===id){connectApp(id,false,1);return;}
+   connectionStates.set(id,{state:'error',message:'앱 화면을 불러오지 못했습니다. 다시 연결해 주세요.'});if(selected===id)renderSelected();
+ },getIdToken:()=>{if(actor!==expectedActor)throw Error('로그인 계정이 변경되었습니다.');return hubAuth.getIdToken();},onState:(state,message)=>{
    if(actor!==expectedActor)return;if(id==='desk'&&state==='ready')deskResume.retried=false;if(state==='ready')inquiryConnected(id,expectedActor.uid);connectionStates.set(id,{state,message});$('connection-state').textContent=state==='ready'?'인증 연결 완료':message||'인증 연결 중';if(selected===id)renderSelected();
  }});
  connections.set(id,connection);
