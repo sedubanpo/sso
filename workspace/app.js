@@ -1,4 +1,4 @@
-import {presentFrames} from './auth/frame-presentation.mjs?v=20261024-intake';
+import {presentFrames} from './auth/frame-presentation.mjs?v=20261031-startup';
 import {installLeaveGuard} from './auth/leave-guard.mjs';
 import {createInquiryDestination} from './auth/inquiry-destination.mjs';
 import {openAppTab} from './auth/new-tab.mjs?v=20260920';
@@ -129,12 +129,12 @@ async function enterSession(result){
 }
 async function loginFromHeader(event){
  event.preventDefault();if(authBusy||event.isComposing)return;authBusy=true;
- const fields=$('hub-login').querySelector('fieldset'),password=$('login-password').value;fields.disabled=true;$('auth-state').textContent='로그인 중';
+ const fields=$('hub-login').querySelector('fieldset'),password=$('login-password').value;fields.disabled=true;$('remember-login').disabled=true;$('auth-state').textContent='로그인 중';
  try{
    const result=await hubAuth.login($('login-id').value,password,$('remember-login').checked);if(!result)return;
    await enterSession(result);
  }catch(error){$('auth-state').textContent='로그인 실패';setGate('로그인하지 못했습니다',error.message||'로그인 정보를 확인해 주세요.');}
- finally{authBusy=false;fields.disabled=false;$('login-password').value='';}
+ finally{authBusy=false;fields.disabled=false;$('remember-login').disabled=false;$('login-password').value='';}
 }
 async function logoutHub(){
  clearInquiryDestination();
