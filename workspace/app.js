@@ -91,6 +91,8 @@ function connectApp(id,external=false,startupRetry=0){
  if(connections.has(id)){connections.get(id).stop();connections.delete(id);}
  if(frames.has(id)){frames.get(id).remove();frames.delete(id);}
  const frame=document.createElement('iframe');frame.title=app.name;frame.referrerPolicy='strict-origin-when-cross-origin';frame.hidden=true;
+ // Only the Synchro-S origin needs to copy timetable images from its embedded screen.
+ if(id==='synchro') frame.allow='clipboard-write '+new URL(app.url).origin;
  connectionStates.set(id,{state:'pending'});
  const expectedActor=actor;
  const connection=createConnection({appId:id,entry:url,target:null,brokerUrl,
